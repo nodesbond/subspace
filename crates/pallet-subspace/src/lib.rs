@@ -28,6 +28,9 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;

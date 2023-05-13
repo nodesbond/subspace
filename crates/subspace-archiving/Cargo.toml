@@ -39,6 +39,7 @@ std = [
     "parity-scale-codec/std",
     "parallel",
     "serde",
+    "subspace-core-primitives/serde",
     "subspace-core-primitives/std",
     "subspace-erasure-coding/std",
     "thiserror",
