@@ -35,6 +35,9 @@ pub trait ExecutorRegistry<AccountId, Balance, StakeWeight> {
     /// Returns `Some(stake_weight)` if the given account is an authority.
     #[cfg(feature = "std")]
     fn authority_stake_weight(who: &AccountId) -> Option<StakeWeight>;
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn unchecked_register(executor: AccountId, public_key: ExecutorPublicKey, stake: Balance);
 }
 
 impl<AccountId, Balance, StakeWeight> ExecutorRegistry<AccountId, Balance, StakeWeight> for () {
@@ -54,6 +57,9 @@ impl<AccountId, Balance, StakeWeight> ExecutorRegistry<AccountId, Balance, Stake
     fn authority_stake_weight(_who: &AccountId) -> Option<StakeWeight> {
         None
     }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    fn unchecked_register(_executor: AccountId, _public_key: ExecutorPublicKey, _stake: Balance) {}
 }
 
 /// Hook invoked after the executor set is updated on each epoch.
