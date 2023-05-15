@@ -6671,6 +6671,7 @@ dependencies = [
 name = "pallet-domain-registry"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
  "frame-system",
  "log",
@@ -6679,6 +6680,7 @@ dependencies = [
  "pallet-receipts",
  "parity-scale-codec",
  "scale-info",
+ "schnorrkel",
  "serde",
  "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
  "sp-domain-digests",
@@ -6798,11 +6800,13 @@ dependencies = [
 name = "pallet-executor-registry"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-support 4.0.0-dev (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
  "frame-system",
  "pallet-balances",
  "parity-scale-codec",
  "scale-info",
+ "schnorrkel",
  "sp-arithmetic 6.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
  "sp-core 7.0.0 (git+https://github.com/subspace/substrate?rev=9cf78129a2638d3f370868863d16f4fe32b4ad30)",
  "sp-domains",
