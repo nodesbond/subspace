@@ -17,7 +17,7 @@
 use crate::core_domain::cli::CoreDomainCli;
 use clap::Parser;
 use domain_runtime_primitives::AccountId;
-use domain_service::DomainConfiguration;
+use domain_service::{BundleRelayConfig, DomainConfiguration};
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams, SubstrateCli,
@@ -30,6 +30,11 @@ use sp_core::crypto::Ss58Codec;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use system_domain_runtime::GenesisConfig as SystemDomainGenesisConfig;
+
+/// TODO: this is tentative for now.
+const SYSTEM_DOMAIN_RELAY_QUEUE_SIZE: usize = 1024;
+
+const SYSTEM_DOMAIN_RELAY_PROTOCOL: &str = "/subspace/system-domain-bundle-relay/1";
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
@@ -125,10 +130,20 @@ impl SystemDomainCli {
             None
         };
 
+        let bundle_relay_config = if self.run.enable_bundle_relay {
+            Some(BundleRelayConfig::new(
+                SYSTEM_DOMAIN_RELAY_PROTOCOL.into(),
+                SYSTEM_DOMAIN_RELAY_QUEUE_SIZE,
+            ))
+        } else {
+            None
+        };
+
         let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
         Ok(DomainConfiguration {
             service_config,
             maybe_relayer_id,
+            bundle_relay_config,
         })
     }
 }

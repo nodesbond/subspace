@@ -379,12 +379,19 @@ where
 {
     // TODO: Do we even need block announcement on system domain node?
     // system_domain_config.announce_block = false;
-    println!("xxx: new_full_system(): system_domain_config = {system_domain_config:?}");
     system_domain_config
         .service_config
         .network
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
+    if let Some(relay_config) = &system_domain_config.bundle_relay_config {
+        system_domain_config
+            .service_config
+            .network
+            .request_response_protocols
+            .push(relay_config.request_response_protocol.clone());
+    }
+    println!("xxx: new_full_system(): system_domain_config = {system_domain_config:?}");
 
     let params = new_partial(
         &system_domain_config.service_config,

@@ -445,8 +445,6 @@ where
         gossip_message_sink,
         provider,
     } = core_domain_params;
-    println!("xxx: new_full_core(): domain_id = {domain_id:?}, core_domain_config = {core_domain_config:?}");
-
     // TODO: Do we even need block announcement on core domain node?
     // core_domain_config.announce_block = false;
 
@@ -455,6 +453,14 @@ where
         .network
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
+    if let Some(relay_config) = &core_domain_config.bundle_relay_config {
+        core_domain_config
+            .service_config
+            .network
+            .request_response_protocols
+            .push(relay_config.request_response_protocol.clone());
+    }
+    println!("xxx: new_full_core(): domain_id = {domain_id:?}, core_domain_config = {core_domain_config:?}");
 
     let params = new_partial::<_, _, _, Block, SBlock, PBlock, Provider>(
         &core_domain_config.service_config,

@@ -152,6 +152,7 @@ where
         let core_domain_config = domain_service::DomainConfiguration {
             service_config,
             maybe_relayer_id,
+            bundle_relay_config: None,
         };
         let executor_streams = ExecutorStreams {
             // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
