@@ -57,6 +57,10 @@ pub struct DomainCli {
 
     #[clap(raw = true)]
     pub core_domain_args: Vec<String>,
+
+    /// Enable bundle announcements and downloads
+    #[arg(long)]
+    pub enable_bundle_relay: bool,
 }
 
 pub struct SystemDomainCli {
@@ -81,6 +85,8 @@ impl SystemDomainCli {
     ) -> (Self, Option<CoreDomainCli>) {
         let domain_cli =
             DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args));
+        println!("xxx: SystemDomainCli::new(): base_path = {base_path:?}");
+        println!("xxx: SystemDomainCli::new(): domain_cli = {domain_cli:?}");
 
         let maybe_core_domain_cli = if !domain_cli.core_domain_args.is_empty() {
             let core_domain_cli = CoreDomainCli::new(

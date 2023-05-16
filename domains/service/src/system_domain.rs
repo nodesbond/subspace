@@ -379,7 +379,7 @@ where
 {
     // TODO: Do we even need block announcement on system domain node?
     // system_domain_config.announce_block = false;
-
+    println!("xxx: new_full_system(): system_domain_config = {system_domain_config:?}");
     system_domain_config
         .service_config
         .network

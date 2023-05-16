@@ -20,6 +20,7 @@ pub type FullClient<Block, RuntimeApi, ExecutorDispatch> =
 pub type FullBackend<Block> = sc_service::TFullBackend<Block>;
 
 /// Domain configuration.
+#[derive(Debug)]
 pub struct DomainConfiguration<AccountId> {
     pub service_config: ServiceConfiguration,
     pub maybe_relayer_id: Option<AccountId>,

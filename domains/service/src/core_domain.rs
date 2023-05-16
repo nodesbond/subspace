@@ -445,6 +445,7 @@ where
         gossip_message_sink,
         provider,
     } = core_domain_params;
+    println!("xxx: new_full_core(): domain_id = {domain_id:?}, core_domain_config = {core_domain_config:?}");
 
     // TODO: Do we even need block announcement on core domain node?
     // core_domain_config.announce_block = false;
