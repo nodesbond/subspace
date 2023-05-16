@@ -1,6 +1,7 @@
 mod worker;
 
 use self::worker::GossipWorker;
+use domain_bundles::GossipMessageHandler;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use sc_network::config::NonDefaultSetConfig;
@@ -61,39 +62,6 @@ impl<PBlock: BlockT, Block: BlockT>
     ) -> Self {
         Self::Bundle(bundle)
     }
-}
-
-/// What to do with the successfully verified gossip message.
-#[derive(Debug)]
-pub enum Action {
-    /// The message does not have to be re-gossiped.
-    Empty,
-    /// Gossip the bundle message to other peers.
-    RebroadcastBundle,
-    /// Gossip the execution exceipt message to other peers.
-    RebroadcastExecutionReceipt,
-}
-
-impl Action {
-    fn rebroadcast_bundle(&self) -> bool {
-        matches!(self, Self::RebroadcastBundle)
-    }
-}
-
-/// Handler for the messages received from the executor gossip network.
-pub trait GossipMessageHandler<PBlock, Block>
-where
-    PBlock: BlockT,
-    Block: BlockT,
-{
-    /// Error type.
-    type Error: Debug;
-
-    /// Validates and applies when a transaction bundle was received.
-    fn on_bundle(
-        &self,
-        bundle: &SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    ) -> Result<Action, Self::Error>;
 }
 
 /// Validator for the gossip messages.

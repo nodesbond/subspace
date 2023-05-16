@@ -132,7 +132,8 @@ where
         };
         let initial_response = network_peer_handle
             .request::<_, InitialResponse<Block, ProtoClient::Response>>(
-                ServerMessage::InitialRequest(initial_request),
+                // XXX: temp hack for the breakage
+                initial_request,
             )
             .await?;
 
@@ -293,21 +294,27 @@ where
             payload,
             pending_response,
         } = request;
-        let server_msg: ServerMessage<Block, ProtoServer::Request> =
-            match Decode::decode(&mut payload.as_ref()) {
-                Ok(msg) => msg,
-                Err(err) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "relay::on_request: decode incoming: {peer}: {err:?}"
-                    );
-                    return;
-                }
-            };
+        // XXX: temp hack for the breakage
+        // First decode as initial request, then try decoding as protocol request
+        let mut server_msg: Option<ServerMessage<Block, ProtoServer::Request>> = None;
+        if let Ok(msg) =
+            <InitialRequest<Block, ProtoServer::Request> as Decode>::decode(&mut payload.as_ref())
+        {
+            server_msg = Some(ServerMessage::InitialRequest(msg));
+        } else if let Ok(msg) = <ProtoServer::Request as Decode>::decode(&mut payload.as_ref()) {
+            server_msg = Some(ServerMessage::ProtocolRequest(msg));
+        }
 
         let ret = match server_msg {
-            ServerMessage::InitialRequest(req) => self.on_initial_request(req),
-            ServerMessage::ProtocolRequest(req) => self.on_protocol_request(req),
+            Some(ServerMessage::InitialRequest(req)) => self.on_initial_request(req),
+            Some(ServerMessage::ProtocolRequest(req)) => self.on_protocol_request(req),
+            _ => {
+                warn!(
+                    target: LOG_TARGET,
+                    "relay::consensus server: failed to decode incoming message"
+                );
+                return;
+            }
         };
 
         match ret {

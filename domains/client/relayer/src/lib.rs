@@ -3,10 +3,9 @@
 pub mod worker;
 
 use async_channel::TrySendError;
-use cross_domain_message_gossip::Message as GossipMessage;
+use cross_domain_message_gossip::{GossipMessageSink, Message as GossipMessage};
 use parity_scale_codec::{Decode, Encode, FullCodec};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
-use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_domains::DomainId;
 use sp_messenger::messages::{
@@ -25,9 +24,6 @@ const LOG_TARGET: &str = "message::relayer";
 
 /// Relayer relays messages between core domains using system domain as trusted third party.
 struct Relayer<Client, Block, RelayerId>(PhantomData<(Client, Block, RelayerId)>);
-
-/// Sink used to submit all the gossip messages.
-pub type GossipMessageSink = TracingUnboundedSender<GossipMessage>;
 
 /// Relayer error types.
 #[derive(Debug)]
@@ -444,7 +440,7 @@ where
 
         sink.unbounded_send(GossipMessage {
             domain_id: dst_domain_id,
-            encoded_data: ext.encode(),
+            payload: ext.encode().into(),
         })
         .map_err(Error::UnableToSubmitCrossDomainMessage)
     }
@@ -466,7 +462,7 @@ where
 
         sink.unbounded_send(GossipMessage {
             domain_id: dst_domain_id,
-            encoded_data: ext.encode(),
+            payload: ext.encode().into(),
         })
         .map_err(Error::UnableToSubmitCrossDomainMessage)
     }

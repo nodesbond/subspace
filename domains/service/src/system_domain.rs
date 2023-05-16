@@ -1,12 +1,15 @@
 use crate::system_domain_tx_pre_validator::SystemDomainTxPreValidator;
-use crate::{DomainConfiguration, FullBackend, FullClient};
-use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use crate::{
+    bundle_relay_config, BundleRelayComponents, DomainConfiguration, FullBackend, FullClient,
+};
+use cross_domain_message_gossip::{
+    DomainBundleAnnouncementSink, DomainTxPoolSink, GossipMessageSink, Message as GossipMessage,
+};
+use domain_bundles::BundleSync;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_executor::{
     EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,
 };
-use domain_client_executor_gossip::ExecutorGossipParams;
-use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{AccountId, Balance, DomainCoreApi, Hash};
 use futures::channel::mpsc;
@@ -15,7 +18,9 @@ use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, StateBackendFor};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
+use sc_network::NetworkRequest;
 use sc_rpc_api::DenyUnsafe;
+use sc_service::config::{IncomingRequest, RequestResponseConfig};
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTaskHandle, SpawnTasksParams, TFullBackend, TaskManager,
@@ -44,6 +49,10 @@ use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
+
+/// TODO: this is tentative for now.
+const SYSTEM_DOMAIN_RELAY_QUEUE_SIZE: usize = 1024;
+const SYSTEM_DOMAIN_RELAY_PROTOCOL: &str = "/subspace/system-domain-bundle-relay/1";
 
 type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = SystemExecutor<
     Block,
@@ -119,10 +128,10 @@ where
     pub network_starter: NetworkStarter,
     /// Executor.
     pub executor: SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
-    pub gossip_message_validator:
-        SystemGossipMessageValidator<PBlock, PClient, RuntimeApi, ExecutorDispatch>,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
+    /// Bundle announcement sink
+    pub bundle_announcement_sink: Option<DomainBundleAnnouncementSink>,
 }
 
 pub type FullPool<PBlock, PClient, RuntimeApi, Executor> = subspace_transaction_pool::FullPool<
@@ -322,6 +331,7 @@ where
 /// Start a node with the given system domain `Configuration` and consensus chain `Configuration`.
 ///
 /// This is the actual implementation that is abstract over the executor and the runtime api.
+#[allow(clippy::too_many_arguments)]
 pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi, ExecutorDispatch>(
     mut system_domain_config: DomainConfiguration<AccountId>,
     primary_chain_client: Arc<PClient>,
@@ -329,6 +339,8 @@ pub async fn new_full_system<PBlock, PClient, SC, IBNS, CIBNS, NSNS, RuntimeApi,
     select_chain: &SC,
     executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     gossip_message_sink: GossipMessageSink,
+    bundle_relay_receiver: Option<mpsc::Receiver<IncomingRequest>>,
+    primary_chain_network: Arc<dyn NetworkRequest + Send + Sync + 'static>,
 ) -> sc_service::error::Result<
     NewFullSystem<
         Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
@@ -379,7 +391,6 @@ where
 {
     // TODO: Do we even need block announcement on system domain node?
     // system_domain_config.announce_block = false;
-
     system_domain_config
         .service_config
         .network
@@ -390,6 +401,19 @@ where
         &system_domain_config.service_config,
         primary_chain_client.clone(),
     )?;
+    let bundle_relay_components: Option<BundleRelayComponents<_, _, _>> =
+        if system_domain_config.enable_bundle_relay {
+            let components = BundleRelayComponents::new(
+                SYSTEM_DOMAIN_RELAY_PROTOCOL.to_string(),
+                params.transaction_pool.clone(),
+                bundle_relay_receiver.expect("System domain bundle relay receiver expected; qed"),
+                primary_chain_network,
+            );
+            Some(components)
+        } else {
+            None
+        };
+    println!("xxx: new_full_system(): system_domain_config = {system_domain_config:?}");
 
     let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
 
@@ -452,7 +476,6 @@ where
     let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
-    let (bundle_sender, bundle_receiver) = tracing_unbounded("system_domain_bundle_stream", 100);
 
     let domain_confirmation_depth = primary_chain_client
         .runtime_api()
@@ -473,11 +496,14 @@ where
             is_authority,
             keystore: params.keystore_container.keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
-            bundle_sender: Arc::new(bundle_sender),
+            gossip_message_sink: gossip_message_sink.clone(),
             executor_streams,
             domain_confirmation_depth,
             block_import,
         },
+        bundle_relay_components
+            .as_ref()
+            .map(|c| c.bundle_pool.clone()),
     )
     .await?;
 
@@ -488,18 +514,43 @@ where
         transaction_pool.clone(),
         executor.fraud_proof_generator(),
     );
-    let executor_gossip =
-        domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-            network: network_service.clone(),
-            sync: sync_service.clone(),
-            executor: gossip_message_validator.clone(),
-            bundle_receiver,
-        });
-    spawn_essential.spawn_essential_blocking(
-        "system-domain-gossip",
-        None,
-        Box::pin(executor_gossip),
-    );
+
+    // Start the bundle client/server sides.
+    let bundle_announcement_sink = if let Some(BundleRelayComponents {
+        bundle_pool,
+        download_client,
+        mut download_server,
+        ..
+    }) = bundle_relay_components
+    {
+        let (bundle_announcements_sender, bundle_announcements_receiver) =
+            tracing_unbounded("system_domain_bundle_announcements", 100);
+        let bundle_sync = BundleSync::new(
+            bundle_pool,
+            download_client,
+            bundle_announcements_receiver,
+            gossip_message_sink.clone(),
+            gossip_message_validator,
+            DomainId::SYSTEM,
+        );
+        spawn_essential.spawn_essential_blocking(
+            "system-domain-bundle-client",
+            None,
+            Box::pin(async move {
+                bundle_sync.run().await;
+            }),
+        );
+        spawn_essential.spawn_essential_blocking(
+            "system-domain-bundle-server",
+            None,
+            Box::pin(async move {
+                download_server.run().await;
+            }),
+        );
+        Some(bundle_announcements_sender)
+    } else {
+        None
+    };
 
     if let Some(relayer_id) = system_domain_config.maybe_relayer_id {
         tracing::info!(
@@ -552,7 +603,7 @@ where
                 if let Some(tx) = maybe_transaction {
                     let msg = GossipMessage {
                         domain_id: DomainId::SYSTEM,
-                        encoded_data: tx.encode(),
+                        payload: tx.encode().into(),
                     };
                     if let Err(_e) = gossip_message_sink.unbounded_send(msg) {
                         return;
@@ -572,9 +623,19 @@ where
         rpc_handlers,
         network_starter,
         executor,
-        gossip_message_validator,
         tx_pool_sink: msg_sender,
+        bundle_announcement_sink,
     };
 
     Ok(new_full)
+}
+
+/// Builds the request/response config for the core domain bundle relay,
+/// that should be included in the primary chain network config
+pub fn system_domain_bundle_relay_config(
+) -> (RequestResponseConfig, mpsc::Receiver<IncomingRequest>) {
+    bundle_relay_config(
+        SYSTEM_DOMAIN_RELAY_PROTOCOL.to_string(),
+        SYSTEM_DOMAIN_RELAY_QUEUE_SIZE,
+    )
 }

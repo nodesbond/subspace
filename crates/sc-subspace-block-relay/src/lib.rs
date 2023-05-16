@@ -46,10 +46,12 @@ use codec::{Decode, Encode};
 use std::time::Duration;
 
 mod consensus;
+mod execution;
 mod protocol;
 mod utils;
 
 pub use crate::consensus::build_consensus_relay;
+pub use crate::execution::build_execution_relay;
 pub use crate::utils::NetworkWrapper;
 
 pub(crate) const LOG_TARGET: &str = "block_relay";

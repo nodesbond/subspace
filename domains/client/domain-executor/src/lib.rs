@@ -107,16 +107,16 @@ pub use self::parent_chain::{CoreDomainParentChain, SystemDomainParentChain};
 pub use self::system_executor::Executor as SystemExecutor;
 pub use self::system_gossip_message_validator::SystemGossipMessageValidator;
 use crate::utils::BlockInfo;
+use cross_domain_message_gossip::GossipMessageSink;
 use futures::channel::mpsc;
 use futures::Stream;
 use sc_client_api::BlockImportNotification;
-use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnNamed;
-use sp_domains::{ExecutionReceipt, SignedBundle};
+use sp_domains::ExecutionReceipt;
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
@@ -132,15 +132,6 @@ type TransactionFor<Backend, Block> =
     <<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
         HashFor<Block>,
     >>::Transaction;
-
-type BundleSender<Block, PBlock> = TracingUnboundedSender<
-    SignedBundle<
-        <Block as BlockT>::Extrinsic,
-        NumberFor<PBlock>,
-        <PBlock as BlockT>::Hash,
-        <Block as BlockT>::Hash,
-    >,
->;
 
 /// Notification streams from the primary chain driving the executor.
 pub struct ExecutorStreams<PBlock, IBNS, CIBNS, NSNS> {
@@ -188,7 +179,7 @@ pub struct EssentialExecutorParams<
     pub is_authority: bool,
     pub keystore: KeystorePtr,
     pub spawner: Box<dyn SpawnNamed + Send + Sync>,
-    pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
+    pub gossip_message_sink: GossipMessageSink,
     pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: Arc<BI>,

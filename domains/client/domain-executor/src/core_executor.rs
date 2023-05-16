@@ -5,6 +5,7 @@ use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::CoreDomainParentChain;
 use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
+use domain_bundles::CompactBundlePool;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
@@ -126,6 +127,7 @@ where
             NSNS,
             BI,
         >,
+        bundle_pool: Option<Arc<dyn CompactBundlePool<Block, PBlock, TransactionPool>>>,
     ) -> Result<Self, sp_consensus::Error>
     where
         SC: SelectChain<PBlock>,
@@ -150,8 +152,10 @@ where
             params.client.clone(),
             parent_chain,
             domain_bundle_proposer,
-            params.bundle_sender,
+            params.gossip_message_sink,
             params.keystore.clone(),
+            params.transaction_pool.clone(),
+            bundle_pool,
         );
 
         let fraud_proof_generator = FraudProofGenerator::new(

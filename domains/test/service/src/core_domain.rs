@@ -152,6 +152,7 @@ where
         let core_domain_config = domain_service::DomainConfiguration {
             service_config,
             maybe_relayer_id,
+            enable_bundle_relay: false,
         };
         let executor_streams = ExecutorStreams {
             // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
@@ -178,7 +179,9 @@ where
             select_chain: mock_primary_node.select_chain.clone(),
             executor_streams,
             gossip_message_sink: gossip_msg_sink,
+            bundle_relay_receiver: None,
             provider: DefaultProvider,
+            primary_chain_network: mock_primary_node.network_service.clone(),
         };
         let core_domain_node =
             domain_service::new_full_core::<_, _, _, _, _, _, _, _, _, RuntimeApi, Executor, _, _>(

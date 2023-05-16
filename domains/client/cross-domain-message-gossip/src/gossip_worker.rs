@@ -9,7 +9,7 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_core::twox_256;
-use sp_domains::DomainId;
+use sp_domains::{DomainId, SignedBundleHash};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
@@ -21,11 +21,37 @@ const PROTOCOL_NAME: &str = "/subspace/cross-domain-messages";
 pub type DomainTxPoolSink = TracingUnboundedSender<Vec<u8>>;
 type MessageHash = [u8; 32];
 
+/// Unbounded sender for bundle announcements.
+pub type DomainBundleAnnouncementSink = TracingUnboundedSender<(PeerId, SignedBundleHash)>;
+
 /// A cross domain message with encoded data.
 #[derive(Debug, Encode, Decode)]
 pub struct Message {
     pub domain_id: DomainId,
-    pub encoded_data: Vec<u8>,
+    pub payload: MessagePayload,
+}
+
+#[derive(Debug, Encode, Decode)]
+pub enum MessagePayload {
+    EncodedData(Vec<u8>),
+    BundleAnnouncement(SignedBundleHash),
+}
+
+impl From<Vec<u8>> for MessagePayload {
+    fn from(encoded_data: Vec<u8>) -> MessagePayload {
+        MessagePayload::EncodedData(encoded_data)
+    }
+}
+
+impl From<SignedBundleHash> for MessagePayload {
+    fn from(bundle_hash: SignedBundleHash) -> MessagePayload {
+        MessagePayload::BundleAnnouncement(bundle_hash)
+    }
+}
+
+pub enum MessageSource {
+    Local,
+    Network(Option<PeerId>),
 }
 
 /// Gossip worker builder
@@ -33,6 +59,7 @@ pub struct GossipWorkerBuilder {
     gossip_msg_stream: TracingUnboundedReceiver<Message>,
     gossip_msg_sink: TracingUnboundedSender<Message>,
     domain_tx_pool_sinks: BTreeMap<DomainId, DomainTxPoolSink>,
+    domain_bundle_announcement_sinks: BTreeMap<DomainId, DomainBundleAnnouncementSink>,
 }
 
 impl GossipWorkerBuilder {
@@ -45,6 +72,7 @@ impl GossipWorkerBuilder {
             gossip_msg_stream,
             gossip_msg_sink,
             domain_tx_pool_sinks: BTreeMap::new(),
+            domain_bundle_announcement_sinks: BTreeMap::new(),
         }
     }
 
@@ -55,6 +83,17 @@ impl GossipWorkerBuilder {
         tx_pool_sink: DomainTxPoolSink,
     ) {
         self.domain_tx_pool_sinks.insert(domain_id, tx_pool_sink);
+    }
+
+    /// Collect the domain bundle announcement sinks that will be used by the gossip
+    /// message worker later.
+    pub fn push_domain_bundle_announcement_sink(
+        &mut self,
+        domain_id: DomainId,
+        bundle_announcement_sink: DomainBundleAnnouncementSink,
+    ) {
+        self.domain_bundle_announcement_sinks
+            .insert(domain_id, bundle_announcement_sink);
     }
 
     /// Get the gossip message sink
@@ -76,6 +115,7 @@ impl GossipWorkerBuilder {
         let Self {
             gossip_msg_stream,
             domain_tx_pool_sinks,
+            domain_bundle_announcement_sinks,
             ..
         } = self;
 
@@ -93,6 +133,7 @@ impl GossipWorkerBuilder {
             gossip_validator,
             gossip_msg_stream,
             domain_tx_pool_sinks,
+            domain_bundle_announcement_sinks,
         }
     }
 }
@@ -104,6 +145,7 @@ pub struct GossipWorker<Block: BlockT> {
     gossip_validator: Arc<GossipValidator>,
     gossip_msg_stream: TracingUnboundedReceiver<Message>,
     domain_tx_pool_sinks: BTreeMap<DomainId, DomainTxPoolSink>,
+    domain_bundle_announcement_sinks: BTreeMap<DomainId, DomainBundleAnnouncementSink>,
 }
 
 /// Returns the network configuration for cross domain message gossip.
@@ -126,7 +168,9 @@ impl<Block: BlockT> GossipWorker<Block> {
                 .lock()
                 .messages_for(topic::<Block>())
                 .filter_map(|notification| async move {
-                    Message::decode(&mut &notification.message[..]).ok()
+                    Message::decode(&mut &notification.message[..])
+                        .ok()
+                        .map(|msg| (notification.sender, msg))
                 }),
         );
 
@@ -136,16 +180,26 @@ impl<Block: BlockT> GossipWorker<Block> {
 
             futures::select! {
                 cross_domain_message = incoming_cross_domain_messages.next().fuse() => {
-                    if let Some(msg) = cross_domain_message {
+                    if let Some((sender, msg)) = cross_domain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
-                        self.handle_cross_domain_message(msg);
+                        match msg.payload {
+                            MessagePayload::EncodedData(data) => self.handle_cross_domain_message(msg.domain_id, data),
+                            MessagePayload::BundleAnnouncement(hash) => self.handle_bundle_announcement(
+                                msg.domain_id, hash, MessageSource::Network(sender)
+                            ),
+                        }
                     }
                 },
 
                 cross_domain_message = self.gossip_msg_stream.next().fuse() => {
                     if let Some(msg) = cross_domain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross domain message for domain: {:?}", msg.domain_id);
-                        self.handle_cross_domain_message(msg);
+                        match msg.payload {
+                            MessagePayload::EncodedData(data) => self.handle_cross_domain_message(msg.domain_id, data),
+                            MessagePayload::BundleAnnouncement(hash) => self.handle_bundle_announcement(
+                                msg.domain_id, hash, MessageSource::Local
+                            ),
+                        }
                     }
                 }
 
@@ -157,18 +211,18 @@ impl<Block: BlockT> GossipWorker<Block> {
         }
     }
 
-    fn handle_cross_domain_message(&mut self, msg: Message) {
+    fn handle_cross_domain_message(&mut self, domain_id: DomainId, encoded_data: Vec<u8>) {
         // mark and rebroadcast message
+        let msg = Message {
+            domain_id,
+            payload: MessagePayload::EncodedData(encoded_data.clone()),
+        };
         let encoded_msg = msg.encode();
         self.gossip_validator.note_broadcast(&encoded_msg);
         self.gossip_engine
             .lock()
             .gossip_message(topic::<Block>(), encoded_msg, false);
 
-        let Message {
-            domain_id,
-            encoded_data,
-        } = msg;
         let sink = match self.domain_tx_pool_sinks.get(&domain_id) {
             Some(sink) => sink,
             None => return,
@@ -187,6 +241,52 @@ impl<Block: BlockT> GossipWorker<Block> {
             domain_id
         );
         self.domain_tx_pool_sinks.remove(&domain_id);
+    }
+
+    /// Handles the bundle announcements generated locally and received from
+    /// the network
+    fn handle_bundle_announcement(
+        &mut self,
+        domain_id: DomainId,
+        bundle_hash: SignedBundleHash,
+        source: MessageSource,
+    ) {
+        match source {
+            MessageSource::Network(Some(sender)) => {
+                // Received announcement from network, forward it to the local announcement
+                // listener to initiate download
+                let sink = match self.domain_bundle_announcement_sinks.get(&domain_id) {
+                    Some(sink) => sink,
+                    None => return,
+                };
+
+                // send the message to the open and ready channel
+                if !sink.is_closed() && sink.unbounded_send((sender, bundle_hash)).is_ok() {
+                    return;
+                }
+
+                // sink is either closed or failed to send unbounded message
+                // consider it closed and remove the sink.
+                tracing::error!(
+                    target: LOG_TARGET,
+                    "Failed to send incoming bundle announcement to listener: {domain_id:?}, {bundle_hash:?}",
+                );
+                self.domain_bundle_announcement_sinks.remove(&domain_id);
+            }
+            MessageSource::Local => {
+                // Received from local source, broadcast to the network
+                let msg = Message {
+                    domain_id,
+                    payload: bundle_hash.into(),
+                };
+                let encoded_msg = msg.encode();
+                self.gossip_validator.note_broadcast(&encoded_msg);
+                self.gossip_engine
+                    .lock()
+                    .gossip_message(topic::<Block>(), encoded_msg, false);
+            }
+            _ => {}
+        }
     }
 }
 

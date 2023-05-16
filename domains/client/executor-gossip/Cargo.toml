@@ -5,6 +5,7 @@ authors = ["Liu-Cheng Xu <xuliuchengxlc@gmail.com>"]
 edition = "2021"
 
 [dependencies]
+domain-bundles = { version = "0.1.0", path = "../domain-bundles" }
 futures = "0.3.28"
 parity-scale-codec = { version = "3.4.0", features = ["derive"] }
 parking_lot = "0.12.1"

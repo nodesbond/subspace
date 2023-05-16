@@ -6,6 +6,7 @@ use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
 use sc_network::{NetworkRequest, PeerId, RequestFailure};
+use sp_domains::SignedBundleHash;
 use std::sync::Arc;
 
 type NetworkRequestService = Arc<dyn NetworkRequest + Send + Sync + 'static>;
@@ -144,4 +145,7 @@ pub(crate) enum RelayError {
 
     #[error("Request/response error: {0}")]
     RequestResponse(#[from] RequestResponseErr),
+
+    #[error("Compact block not found for bundle hash: {0}")]
+    CompactBlockNotFound(SignedBundleHash),
 }

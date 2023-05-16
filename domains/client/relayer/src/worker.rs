@@ -1,4 +1,5 @@
-use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
+use crate::{BlockT, Error, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
+use cross_domain_message_gossip::GossipMessageSink;
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode, FullCodec};
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};

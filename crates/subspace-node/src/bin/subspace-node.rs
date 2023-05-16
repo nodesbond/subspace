@@ -24,7 +24,9 @@ use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::AccountId as AccountId32;
 use domain_service::providers::DefaultProvider;
-use domain_service::{FullBackend, FullClient};
+use domain_service::{
+    core_domain_bundle_relay_config, system_domain_bundle_relay_config, FullBackend, FullClient,
+};
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use futures::StreamExt;
@@ -447,6 +449,21 @@ fn main() -> Result<(), Error> {
 
                 // TODO: proper value
                 let primary_block_import_throttling_buffer_size = 10;
+                let domain_cli_params = if !cli.domain_args.is_empty() {
+                    Some(SystemDomainCli::new(
+                        cli.run
+                            .base_path()?
+                            .map(|base_path| base_path.path().to_path_buf()),
+                        maybe_system_domain_chain_spec.ok_or_else(|| {
+                            "Primary chain spec must contain system domain chain spec".to_string()
+                        })?,
+                        cli.domain_args.into_iter(),
+                    ))
+                } else {
+                    None
+                };
+                let mut system_domain_receiver = None;
+                let mut core_domain_receiver = None;
 
                 let mut primary_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
@@ -520,10 +537,33 @@ fn main() -> Result<(), Error> {
                         .extra_sets
                         .push(cdm_gossip_peers_set_config());
 
+                    // Include the request response protocols from the domains
+                    // into the primary chain network config
+                    if let Some((system_domain_cli, maybe_core_domain_cli)) = &domain_cli_params {
+                        if system_domain_cli.run.enable_bundle_relay {
+                            let (config, receiver) = system_domain_bundle_relay_config();
+                            primary_chain_config
+                                .network
+                                .request_response_protocols
+                                .push(config);
+                            system_domain_receiver = Some(receiver);
+                        }
+                        if let Some(core_domain_cli) = &maybe_core_domain_cli {
+                            if core_domain_cli.enable_bundle_relay {
+                                let (config, receiver) = core_domain_bundle_relay_config(core_domain_cli.domain_id);
+                                primary_chain_config
+                                    .network
+                                    .request_response_protocols
+                                    .push(config);
+                                core_domain_receiver = Some(receiver)
+                            }
+                        }
+                    }
+
                     let primary_chain_config = SubspaceConfiguration {
                         base: primary_chain_config,
                         // Domain node needs slots notifications for bundle production.
-                        force_new_slot_notifications: !cli.domain_args.is_empty(),
+                        force_new_slot_notifications: domain_cli_params.is_some(),
                         subspace_networking: SubspaceNetworking::Create {
                             config: dsn_config,
                             piece_cache_size: cli.piece_cache_size.as_u64(),
@@ -567,22 +607,12 @@ fn main() -> Result<(), Error> {
                     })?;
 
                 // Run an executor node, an optional component of Subspace full node.
-                if !cli.domain_args.is_empty() {
+                if let Some((system_domain_cli, maybe_core_domain_cli)) = domain_cli_params {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "SystemDomain"
                     );
                     let _enter = span.enter();
-
-                    let (system_domain_cli, maybe_core_domain_cli) = SystemDomainCli::new(
-                        cli.run
-                            .base_path()?
-                            .map(|base_path| base_path.path().to_path_buf()),
-                        maybe_system_domain_chain_spec.ok_or_else(|| {
-                            "Primary chain spec must contain system domain chain spec".to_string()
-                        })?,
-                        cli.domain_args.into_iter(),
-                    );
 
                     let system_domain_config = system_domain_cli
                         .create_domain_configuration(tokio_handle.clone())
@@ -645,10 +675,17 @@ fn main() -> Result<(), Error> {
                         &primary_chain_node.select_chain,
                         executor_streams,
                         xdm_gossip_worker_builder.gossip_msg_sink(),
+                        system_domain_receiver,
+                        primary_chain_node.network_service.clone(),
                     )
                         .await?;
 
                     xdm_gossip_worker_builder.push_domain_tx_pool_sink(DomainId::SYSTEM, system_domain_node.tx_pool_sink);
+                    if let Some(sink) = system_domain_node.bundle_announcement_sink.as_ref() {
+                        xdm_gossip_worker_builder.push_domain_bundle_announcement_sink(
+                            DomainId::SYSTEM,
+                            sink.clone());
+                    }
 
                     primary_chain_node
                         .task_manager
@@ -696,7 +733,9 @@ fn main() -> Result<(), Error> {
                                     select_chain: primary_chain_node.select_chain.clone(),
                                     executor_streams,
                                     gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
+                                    bundle_relay_receiver: core_domain_receiver,
                                     provider: DefaultProvider,
+                                    primary_chain_network: primary_chain_node.network_service.clone(),
                                 };
 
                                 let core_domain_node =
@@ -721,6 +760,11 @@ fn main() -> Result<(), Error> {
                                     core_domain_cli.domain_id,
                                     core_domain_node.tx_pool_sink,
                                 );
+                                if let Some(sink) = core_domain_node.bundle_announcement_sink.as_ref() {
+                                    xdm_gossip_worker_builder.push_domain_bundle_announcement_sink(
+                                        core_domain_cli.domain_id,
+                                        sink.clone());
+                                }
                                 primary_chain_node
                                     .task_manager
                                     .add_child(core_domain_node.task_manager);
@@ -750,7 +794,9 @@ fn main() -> Result<(), Error> {
                                     select_chain: primary_chain_node.select_chain.clone(),
                                     executor_streams,
                                     gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
+                                    bundle_relay_receiver: core_domain_receiver,
                                     provider: DefaultProvider,
+                                    primary_chain_network: primary_chain_node.network_service.clone(),
                                 };
 
                                 let core_domain_node =
@@ -775,6 +821,11 @@ fn main() -> Result<(), Error> {
                                     core_domain_cli.domain_id,
                                     core_domain_node.tx_pool_sink,
                                 );
+                                if let Some(sink) = core_domain_node.bundle_announcement_sink.as_ref() {
+                                    xdm_gossip_worker_builder.push_domain_bundle_announcement_sink(
+                                        core_domain_cli.domain_id,
+                                        sink.clone());
+                                }
                                 primary_chain_node
                                     .task_manager
                                     .add_child(core_domain_node.task_manager);
@@ -822,7 +873,9 @@ fn main() -> Result<(), Error> {
                                     select_chain: primary_chain_node.select_chain.clone(),
                                     executor_streams,
                                     gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
+                                    bundle_relay_receiver: core_domain_receiver,
                                     provider: eth_provider,
+                                    primary_chain_network: primary_chain_node.network_service.clone(),
                                 };
 
                                 let core_domain_node =
@@ -847,6 +900,11 @@ fn main() -> Result<(), Error> {
                                     core_domain_cli.domain_id,
                                     core_domain_node.tx_pool_sink,
                                 );
+                                if let Some(sink) = core_domain_node.bundle_announcement_sink.as_ref() {
+                                    xdm_gossip_worker_builder.push_domain_bundle_announcement_sink(
+                                        core_domain_cli.domain_id,
+                                        sink.clone());
+                                }
                                 primary_chain_node
                                     .task_manager
                                     .add_child(core_domain_node.task_manager);

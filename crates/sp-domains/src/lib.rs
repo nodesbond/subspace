@@ -346,6 +346,15 @@ impl<Extrinsic: Encode, Number, Hash, DomainHash> Bundle<Extrinsic, Number, Hash
     }
 }
 
+/// Compact bundle is similar to [`Bundle`], but holds the extrinsic
+/// hash instead of the the full extrinsic.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct CompactBundle<ExtrinsicHash, Number, Hash, DomainHash> {
+    pub header: BundleHeader<Number, Hash>,
+    pub receipts: Vec<ExecutionReceipt<Number, Hash, DomainHash>>,
+    pub extrinsics_hash: Vec<ExtrinsicHash>,
+}
+
 /// Signed version of [`Bundle`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct SignedBundle<Extrinsic, Number, Hash, DomainHash> {
@@ -375,6 +384,8 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
     }
 }
 
+pub type SignedBundleHash = H256;
+
 impl<Extrinsic: Encode, Number, Hash, DomainHash>
     SignedBundle<Extrinsic, Number, Hash, DomainHash>
 {
@@ -400,6 +411,14 @@ impl<Extrinsic, Number, Hash, DomainHash> SignedBundle<Extrinsic, Number, Hash, 
             } => proof_of_election.executor_public_key,
         }
     }
+}
+
+/// Compact version of [`SignedBundle`].
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct CompactSignedBundle<ExtrinsicHash, Number, Hash, DomainHash> {
+    pub compact_bundle: CompactBundle<ExtrinsicHash, Number, Hash, DomainHash>,
+    pub bundle_solution: BundleSolution<DomainHash>,
+    pub signature: ExecutorSignature,
 }
 
 /// Receipt of a domain block execution.

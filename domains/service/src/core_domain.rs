@@ -1,14 +1,17 @@
 use crate::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
 use crate::providers::{BlockImportProvider, RpcProvider};
-use crate::{DomainConfiguration, FullBackend, FullClient};
-use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use crate::{
+    bundle_relay_config, BundleRelayComponents, DomainConfiguration, FullBackend, FullClient,
+};
+use cross_domain_message_gossip::{
+    DomainBundleAnnouncementSink, DomainTxPoolSink, GossipMessageSink, Message as GossipMessage,
+};
+use domain_bundles::BundleSync;
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_executor::{
     CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams,
     ExecutorStreams,
 };
-use domain_client_executor_gossip::ExecutorGossipParams;
-use domain_client_message_relayer::GossipMessageSink;
 use domain_runtime_primitives::{Balance, DomainCoreApi, InherentExtrinsicApi};
 use frame_benchmarking::frame_support::codec::FullCodec;
 use frame_benchmarking::frame_support::dispatch::TypeInfo;
@@ -20,9 +23,10 @@ use sc_client_api::{
     BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider, StateBackendFor,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-use sc_network::NetworkService;
+use sc_network::{NetworkRequest, NetworkService};
 use sc_network_sync::SyncingService;
 use sc_rpc_api::DenyUnsafe;
+use sc_service::config::{IncomingRequest, RequestResponseConfig};
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
     SpawnTasksParams, TFullBackend, TaskManager,
@@ -53,6 +57,9 @@ use subspace_runtime_primitives::Index as Nonce;
 use subspace_transaction_pool::{FullChainApiWrapper, FullPool};
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
+
+/// TODO: this is tentative for now.
+const CORE_DOMAIN_RELAY_QUEUE_SIZE: usize = 1024;
 
 type BlockImportOf<Block, Client, Provider> = <Provider as BlockImportProvider<Block, Client>>::BI;
 
@@ -157,6 +164,8 @@ pub struct NewFullCore<
     >,
     /// Transaction pool sink
     pub tx_pool_sink: DomainTxPoolSink,
+    /// Bundle announcement sink
+    pub bundle_announcement_sink: Option<DomainBundleAnnouncementSink>,
     _data: PhantomData<AccountId>,
 }
 
@@ -299,7 +308,9 @@ pub struct CoreDomainParams<
     pub select_chain: SC,
     pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     pub gossip_message_sink: GossipMessageSink,
+    pub bundle_relay_receiver: Option<mpsc::Receiver<IncomingRequest>>,
     pub provider: Provider,
+    pub primary_chain_network: Arc<dyn NetworkRequest + Send + Sync + 'static>,
 }
 
 /// Start a node with the given parachain `Configuration` and relay chain `Configuration`.
@@ -443,9 +454,10 @@ where
         select_chain,
         executor_streams,
         gossip_message_sink,
+        bundle_relay_receiver,
         provider,
+        primary_chain_network,
     } = core_domain_params;
-
     // TODO: Do we even need block announcement on core domain node?
     // core_domain_config.announce_block = false;
 
@@ -460,6 +472,19 @@ where
         system_domain_client.clone(),
         &provider,
     )?;
+    let bundle_relay_components: Option<BundleRelayComponents<_, _, _>> =
+        if core_domain_config.enable_bundle_relay {
+            let components = BundleRelayComponents::new(
+                core_domain_relay_protocol(domain_id),
+                params.transaction_pool.clone(),
+                bundle_relay_receiver.expect("Core domain bundle relay receiver expected; qed"),
+                primary_chain_network,
+            );
+            Some(components)
+        } else {
+            None
+        };
+    println!("xxx: new_full_core(): domain_id = {domain_id:?}, core_domain_config = {core_domain_config:?}");
 
     let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
 
@@ -537,7 +562,6 @@ where
     let code_executor = Arc::new(code_executor);
 
     let spawn_essential = task_manager.spawn_essential_handle();
-    let (bundle_sender, bundle_receiver) = tracing_unbounded("core_domain_bundle_stream", 100);
 
     let domain_confirmation_depth = system_domain_client
         .runtime_api()
@@ -572,11 +596,14 @@ where
             is_authority,
             keystore: params.keystore_container.keystore(),
             spawner: Box::new(task_manager.spawn_handle()),
-            bundle_sender: Arc::new(bundle_sender),
+            gossip_message_sink: gossip_message_sink.clone(),
             executor_streams,
             domain_confirmation_depth,
             block_import,
         },
+        bundle_relay_components
+            .as_ref()
+            .map(|c| c.bundle_pool.clone()),
     )
     .await?;
 
@@ -592,14 +619,42 @@ where
             executor.fraud_proof_generator(),
         );
 
-    let executor_gossip =
-        domain_client_executor_gossip::start_gossip_worker(ExecutorGossipParams {
-            network: network_service.clone(),
-            sync: sync_service.clone(),
-            executor: gossip_message_validator,
-            bundle_receiver,
-        });
-    spawn_essential.spawn_essential_blocking("core-domain-gossip", None, Box::pin(executor_gossip));
+    // Start the bundle client/server sides.
+    let bundle_announcement_sink = if let Some(BundleRelayComponents {
+        bundle_pool,
+        download_client,
+        mut download_server,
+        ..
+    }) = bundle_relay_components
+    {
+        let (bundle_announcements_sender, bundle_announcements_receiver) =
+            tracing_unbounded("core-domain-bundle-announcements", 100);
+        let bundle_sync = BundleSync::new(
+            bundle_pool,
+            download_client,
+            bundle_announcements_receiver,
+            gossip_message_sink.clone(),
+            gossip_message_validator,
+            domain_id,
+        );
+        spawn_essential.spawn_essential_blocking(
+            "core-domain-bundle-client",
+            None,
+            Box::pin(async move {
+                bundle_sync.run().await;
+            }),
+        );
+        spawn_essential.spawn_essential_blocking(
+            "core-domain-bundle-server",
+            None,
+            Box::pin(async move {
+                download_server.run().await;
+            }),
+        );
+        Some(bundle_announcements_sender)
+    } else {
+        None
+    };
 
     if let Some(relayer_id) = core_domain_config.maybe_relayer_id {
         tracing::info!(
@@ -663,7 +718,7 @@ where
                 if let Some(tx) = maybe_transaction {
                     let msg = GossipMessage {
                         domain_id,
-                        encoded_data: tx.encode(),
+                        payload: tx.encode().into(),
                     };
                     if let Err(_e) = gossip_message_sink.unbounded_send(msg) {
                         return;
@@ -684,8 +739,28 @@ where
         network_starter,
         executor,
         tx_pool_sink: msg_sender,
+        bundle_announcement_sink,
         _data: Default::default(),
     };
 
     Ok(new_full)
+}
+
+/// The request/response protocol name used for bundle relay
+fn core_domain_relay_protocol(domain_id: DomainId) -> String {
+    format!(
+        "/subspace/core-domain-bundle-relay/{}",
+        u32::from(domain_id)
+    )
+}
+
+/// Builds the request/response config for the core domain bundle relay,
+/// that should be included in the primary chain network config
+pub fn core_domain_bundle_relay_config(
+    domain_id: DomainId,
+) -> (RequestResponseConfig, mpsc::Receiver<IncomingRequest>) {
+    bundle_relay_config(
+        core_domain_relay_protocol(domain_id),
+        CORE_DOMAIN_RELAY_QUEUE_SIZE,
+    )
 }

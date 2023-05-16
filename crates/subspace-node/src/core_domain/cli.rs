@@ -74,6 +74,10 @@ pub struct CoreDomainCli {
     /// Additional args for core domain.
     #[clap(raw = true)]
     additional_args: Vec<String>,
+
+    /// Enable bundle announcements and downloads for the core domain.
+    #[arg(long)]
+    pub enable_bundle_relay: bool,
 }
 
 pub struct AccountId32ToAccountId20Converter;
@@ -93,6 +97,7 @@ impl CoreDomainCli {
     /// If no explicit base path for the core domain, the default value will be
     /// `base_path/core-domain-{domain_id}`.
     pub fn new(base_path: Option<PathBuf>, core_domain_args: impl Iterator<Item = String>) -> Self {
+        println!("xxx: CoreDomainCli::new(): base_path = {base_path:?}");
         let mut cli = Self {
             base_path,
             ..Self::parse_from(
@@ -101,6 +106,7 @@ impl CoreDomainCli {
                     .chain(core_domain_args),
             )
         };
+        println!("xxx: CoreDomainCli::new(): cli = {cli:?}");
 
         cli.base_path
             .as_mut()
@@ -145,6 +151,7 @@ impl CoreDomainCli {
         Ok(DomainConfiguration {
             service_config,
             maybe_relayer_id,
+            enable_bundle_relay: self.enable_bundle_relay,
         })
     }
 }

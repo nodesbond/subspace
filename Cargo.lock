@@ -2374,6 +2374,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-bundles"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "cross-domain-message-gossip",
+ "futures",
+ "lru 0.10.0",
+ "parking_lot 0.12.1",
+ "sc-network",
+ "sc-transaction-pool-api",
+ "sc-utils",
+ "sp-domains",
+ "sp-runtime",
+ "tracing",
+]
+
+[[package]]
 name = "domain-client-consensus-relay-chain"
 version = "0.1.0"
 dependencies = [
@@ -2396,9 +2413,11 @@ dependencies = [
  "core-eth-relay-domain-test-runtime",
  "core-payments-domain-runtime",
  "core-payments-domain-test-runtime",
+ "cross-domain-message-gossip",
  "crossbeam",
  "domain-block-builder",
  "domain-block-preprocessor",
+ "domain-bundles",
  "domain-client-consensus-relay-chain",
  "domain-client-executor-gossip",
  "domain-runtime-primitives",
@@ -2454,6 +2473,7 @@ dependencies = [
 name = "domain-client-executor-gossip"
 version = "0.1.0"
 dependencies = [
+ "domain-bundles",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.1",
@@ -2567,6 +2587,7 @@ dependencies = [
  "clap 4.2.2",
  "cross-domain-message-gossip",
  "domain-block-preprocessor",
+ "domain-bundles",
  "domain-client-consensus-relay-chain",
  "domain-client-executor",
  "domain-client-executor-gossip",
@@ -2589,6 +2610,7 @@ dependencies = [
  "sc-rpc-api",
  "sc-rpc-spec-v2",
  "sc-service",
+ "sc-subspace-block-relay",
  "sc-telemetry",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
@@ -9160,6 +9182,7 @@ name = "sc-subspace-block-relay"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "domain-bundles",
  "futures",
  "lru 0.10.0",
  "parity-scale-codec",
@@ -9170,6 +9193,7 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-transaction-pool-api",
+ "sp-domains",
  "sp-runtime",
  "thiserror",
  "tracing",

@@ -2,7 +2,7 @@ use crate::fraud_proof::FraudProofGenerator;
 use crate::gossip_message_validator::{GossipMessageError, GossipMessageValidator};
 use crate::parent_chain::ParentChainInterface;
 use crate::TransactionFor;
-use domain_client_executor_gossip::{Action, GossipMessageHandler};
+use domain_bundles::{Action, GossipMessageHandler};
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;

@@ -703,11 +703,6 @@ async fn test_invalid_transaction_proof_creation_and_verification() {
         .sign(bundle_with_bad_extrinsics.bundle.hash().as_ref())
         .into();
 
-    alice
-        .gossip_message_validator
-        .validate_gossiped_bundle(&bundle_with_bad_extrinsics)
-        .expect("Create an invalid transaction proof and submit to tx pool");
-
     let extract_fraud_proof_from_tx_pool = || {
         let ready_txs = ferdie
             .transaction_pool

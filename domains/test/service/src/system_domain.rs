@@ -59,22 +59,6 @@ pub type SystemExecutor = domain_client_executor::SystemExecutor<
     SystemCodeExecutor,
 >;
 
-type SystemGossipMessageValidator = domain_client_executor::SystemGossipMessageValidator<
-    Block,
-    PBlock,
-    SClient,
-    subspace_test_client::Client,
-    FullPool<
-        PBlock,
-        subspace_test_client::Client,
-        system_domain_test_runtime::RuntimeApi,
-        SystemDomainExecutorDispatch,
-    >,
-    Backend,
-    SystemCodeExecutor,
-    domain_client_executor::SystemDomainParentChain<subspace_test_client::Client, Block, PBlock>,
->;
-
 /// The System domain native executor instance.
 pub struct SystemDomainExecutorDispatch;
 
@@ -105,11 +89,11 @@ async fn run_executor_with_mock_primary_node(
     Arc<SyncingService<Block>>,
     RpcHandlers,
     SystemExecutor,
-    SystemGossipMessageValidator,
 )> {
     let system_domain_config = DomainConfiguration {
         service_config: system_domain_config,
         maybe_relayer_id,
+        enable_bundle_relay: false,
     };
     let executor_streams = ExecutorStreams {
         // Set `primary_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
@@ -142,6 +126,8 @@ async fn run_executor_with_mock_primary_node(
         &mock_primary_node.select_chain,
         executor_streams,
         gossip_msg_sink,
+        None,
+        mock_primary_node.network_service.clone(),
     )
     .await?;
 
@@ -155,8 +141,8 @@ async fn run_executor_with_mock_primary_node(
         network_starter,
         rpc_handlers,
         executor,
-        gossip_message_validator,
         tx_pool_sink,
+        ..
     } = system_domain_node;
 
     mock_primary_node
@@ -174,7 +160,6 @@ async fn run_executor_with_mock_primary_node(
         sync_service,
         rpc_handlers,
         executor,
-        gossip_message_validator,
     ))
 }
 
@@ -201,8 +186,6 @@ pub struct SystemDomainNode {
     pub rpc_handlers: RpcHandlers,
     /// System domain executor.
     pub executor: SystemExecutor,
-    /// System domain gossip message validator.
-    pub gossip_message_validator: SystemGossipMessageValidator,
 }
 
 /// A builder to create a [`SystemDomainNode`].
@@ -306,7 +289,6 @@ impl SystemDomainNodeBuilder {
             sync_service,
             rpc_handlers,
             executor,
-            gossip_message_validator,
         ) = run_executor_with_mock_primary_node(
             system_domain_config,
             mock_primary_node,
@@ -329,7 +311,6 @@ impl SystemDomainNodeBuilder {
             addr,
             rpc_handlers,
             executor,
-            gossip_message_validator,
         }
     }
 }
