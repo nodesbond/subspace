@@ -2374,6 +2374,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain-client-bundle-pool"
+version = "0.1.0"
+dependencies = [
+ "sp-core",
+ "sp-domains",
+]
+
+[[package]]
 name = "domain-client-consensus-relay-chain"
 version = "0.1.0"
 dependencies = [
