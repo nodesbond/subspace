@@ -58,7 +58,7 @@ pub struct DomainCli {
     #[clap(raw = true)]
     pub core_domain_args: Vec<String>,
 
-    /// Enable bundle announcements and downloads
+    /// Enable bundle announcements and downloads for the system domain.
     #[arg(long)]
     pub enable_bundle_relay: bool,
 }
