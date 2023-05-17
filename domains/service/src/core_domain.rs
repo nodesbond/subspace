@@ -2,6 +2,7 @@ use crate::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
+use domain_bundles::{CompactBundlePool, CompactBundlePoolImpl};
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_executor::{
     CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams,
@@ -453,13 +454,17 @@ where
         .network
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
-    if let Some(relay_config) = &core_domain_config.bundle_relay_config {
-        core_domain_config
-            .service_config
-            .network
-            .request_response_protocols
-            .push(relay_config.request_response_protocol.clone());
-    }
+    let bundle_pool: Option<Arc<dyn CompactBundlePool<_, _, _, _>>> =
+        if let Some(relay_config) = &core_domain_config.bundle_relay_config {
+            core_domain_config
+                .service_config
+                .network
+                .request_response_protocols
+                .push(relay_config.request_response_protocol.clone());
+            Some(Arc::new(CompactBundlePoolImpl::new()))
+        } else {
+            None
+        };
     println!("xxx: new_full_core(): domain_id = {domain_id:?}, core_domain_config = {core_domain_config:?}");
 
     let params = new_partial::<_, _, _, Block, SBlock, PBlock, Provider>(
@@ -584,6 +589,7 @@ where
             domain_confirmation_depth,
             block_import,
         },
+        bundle_pool,
     )
     .await?;
 

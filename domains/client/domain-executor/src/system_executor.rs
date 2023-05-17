@@ -5,6 +5,7 @@ use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::SystemDomainParentChain;
 use crate::system_bundle_processor::SystemBundleProcessor;
 use crate::{active_leaves, EssentialExecutorParams, TransactionFor};
+use domain_bundles::CompactBundlePool;
 use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
@@ -12,6 +13,7 @@ use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
     StateBackendFor,
 };
+use sc_transaction_pool_api::TxHash;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
@@ -28,6 +30,7 @@ use system_runtime_primitives::SystemDomainApi;
 pub struct Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     primary_chain_client: Arc<PClient>,
     client: Arc<Client>,
@@ -42,6 +45,7 @@ impl<Block, PBlock, Client, PClient, TransactionPool, Backend, E> Clone
     for Executor<Block, PBlock, Client, PClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    PBlock: BlockT,
 {
     fn clone(&self) -> Self {
         Self {
@@ -111,6 +115,16 @@ where
             NSNS,
             Client,
         >,
+        bundle_pool: Option<
+            Arc<
+                dyn CompactBundlePool<
+                    TransactionPool,
+                    NumberFor<PBlock>,
+                    PBlock::Hash,
+                    Block::Hash,
+                >,
+            >,
+        >,
     ) -> Result<Self, sp_consensus::Error>
     where
         SC: SelectChain<PBlock>,
@@ -138,6 +152,7 @@ where
             params.bundle_sender,
             params.keystore.clone(),
             params.transaction_pool.clone(),
+            bundle_pool,
         );
 
         let fraud_proof_generator = FraudProofGenerator::new(

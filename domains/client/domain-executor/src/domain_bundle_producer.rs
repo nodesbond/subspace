@@ -4,6 +4,7 @@ use crate::parent_chain::ParentChainInterface;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use codec::Decode;
+use domain_bundles::CompactBundlePool;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sc_transaction_pool_api::TxHash;
@@ -41,6 +42,7 @@ pub(super) struct DomainBundleProducer<
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
+    TransactionPool: sc_transaction_pool_api::TransactionPool,
 {
     domain_id: DomainId,
     system_domain_client: Arc<SClient>,
@@ -51,6 +53,9 @@ pub(super) struct DomainBundleProducer<
     bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
     transaction_pool: Arc<TransactionPool>,
+    bundle_pool: Option<
+        Arc<dyn CompactBundlePool<TransactionPool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+    >,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
 
@@ -81,6 +86,7 @@ where
     SBlock: BlockT,
     PBlock: BlockT,
     ParentChain: Clone,
+    TransactionPool: sc_transaction_pool_api::TransactionPool,
 {
     fn clone(&self) -> Self {
         Self {
@@ -93,6 +99,7 @@ where
             bundle_election_solver: self.bundle_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
             transaction_pool: self.transaction_pool.clone(),
+            bundle_pool: self.bundle_pool.clone(),
             _phantom_data: self._phantom_data,
         }
     }
@@ -148,6 +155,16 @@ where
         bundle_sender: Arc<BundleSender<Block, PBlock>>,
         keystore: KeystorePtr,
         transaction_pool: Arc<TransactionPool>,
+        bundle_pool: Option<
+            Arc<
+                dyn CompactBundlePool<
+                    TransactionPool,
+                    NumberFor<PBlock>,
+                    PBlock::Hash,
+                    Block::Hash,
+                >,
+            >,
+        >,
     ) -> Self {
         let bundle_election_solver = BundleElectionSolver::<SBlock, PBlock, SClient>::new(
             system_domain_client.clone(),
@@ -163,6 +180,7 @@ where
             bundle_election_solver,
             domain_bundle_proposer,
             transaction_pool,
+            bundle_pool,
             _phantom_data: PhantomData::default(),
         }
     }
@@ -245,9 +263,18 @@ where
             let signed_bundle =
                 sign_new_bundle::<Block, PBlock>(bundle, &self.keystore, bundle_solution)?;
 
-            // Add the compact bundle to the pool and advertise the bundle hash
-            // if relay is enabled
-            let compact_signed_bundle = self.construct_compact_signed_bundle(&signed_bundle);
+            if let Some(bundle_pool) = self.bundle_pool.as_ref() {
+                // Add the compact bundle to the pool and advertise the bundle hash
+                // if relay is enabled
+                let compact_signed_bundle = self.construct_compact_signed_bundle(&signed_bundle);
+                bundle_pool.add(compact_signed_bundle);
+
+                /*
+                if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.hash()) {
+                    tracing::error!(error = ?e, "Failed to send transaction bundle");
+                }
+                 */
+            }
 
             Ok(Some(signed_bundle.into_signed_opaque_bundle()))
         } else {
@@ -341,11 +368,6 @@ pub(crate) fn sign_new_bundle<Block: BlockT, PBlock: BlockT>(
                     )))
                 })?,
             };
-
-            // TODO: Re-enable the bundle gossip over X-Net when the compact bundle is supported.
-            // if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.clone()) {
-            // tracing::error!(error = ?e, "Failed to send transaction bundle");
-            // }
 
             Ok(signed_bundle)
         }

@@ -16,6 +16,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 async-trait = "0.1.68"
 clap = { version = "4.2.1", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../client/cross-domain-message-gossip" }
+domain-bundles = { version = "0.1.0", path = "../client/domain-bundles" }
 domain-client-block-preprocessor = { package = "domain-block-preprocessor", version = "0.1.0", path = "../client/block-preprocessor" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../client/consensus-relay-chain" }
 domain-client-executor = { version = "0.1.0", path = "../client/domain-executor" }
