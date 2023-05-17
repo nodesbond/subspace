@@ -152,6 +152,7 @@ where
             domain_bundle_proposer,
             params.bundle_sender,
             params.keystore.clone(),
+            params.transaction_pool.clone(),
         );
 
         let fraud_proof_generator = FraudProofGenerator::new(

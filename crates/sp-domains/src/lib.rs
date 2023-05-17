@@ -384,6 +384,8 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHash: Encode>
     }
 }
 
+pub type SignedBundleHash = H256;
+
 impl<Extrinsic: Encode, Number, Hash, DomainHash>
     SignedBundle<Extrinsic, Number, Hash, DomainHash>
 {
@@ -414,7 +416,7 @@ impl<Extrinsic, Number, Hash, DomainHash> SignedBundle<Extrinsic, Number, Hash, 
 /// Compact version of [`SignedBundle`].
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct CompactSignedBundle<ExtrinsicHash, Number, Hash, DomainHash> {
-    pub compact_bundle: Bundle<ExtrinsicHash, Number, Hash, DomainHash>,
+    pub compact_bundle: CompactBundle<ExtrinsicHash, Number, Hash, DomainHash>,
     pub bundle_solution: BundleSolution<DomainHash>,
     pub signature: ExecutorSignature,
 }

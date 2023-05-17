@@ -6,11 +6,13 @@ use crate::BundleSender;
 use codec::Decode;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
+use sc_transaction_pool_api::TxHash;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
-    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SignedBundle,
+    Bundle, BundleSolution, CompactBundle, CompactSignedBundle, DomainId, ExecutorPublicKey,
+    ExecutorSignature, SignedBundle,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
@@ -48,6 +50,7 @@ pub(super) struct DomainBundleProducer<
     keystore: KeystorePtr,
     bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
+    transaction_pool: Arc<TransactionPool>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
 
@@ -89,6 +92,7 @@ where
             keystore: self.keystore.clone(),
             bundle_election_solver: self.bundle_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
+            transaction_pool: self.transaction_pool.clone(),
             _phantom_data: self._phantom_data,
         }
     }
@@ -143,6 +147,7 @@ where
         >,
         bundle_sender: Arc<BundleSender<Block, PBlock>>,
         keystore: KeystorePtr,
+        transaction_pool: Arc<TransactionPool>,
     ) -> Self {
         let bundle_election_solver = BundleElectionSolver::<SBlock, PBlock, SClient>::new(
             system_domain_client.clone(),
@@ -157,6 +162,7 @@ where
             keystore,
             bundle_election_solver,
             domain_bundle_proposer,
+            transaction_pool,
             _phantom_data: PhantomData::default(),
         }
     }
@@ -236,12 +242,14 @@ where
                 .await?;
 
             let bundle_solution = self.construct_bundle_solution(preliminary_bundle_solution)?;
+            let signed_bundle =
+                sign_new_bundle::<Block, PBlock>(bundle, &self.keystore, bundle_solution)?;
 
-            Ok(Some(sign_new_bundle::<Block, PBlock>(
-                bundle,
-                self.keystore,
-                bundle_solution,
-            )?))
+            // Add the compact bundle to the pool and advertise the bundle hash
+            // if relay is enabled
+            let compact_signed_bundle = self.construct_compact_signed_bundle(&signed_bundle);
+
+            Ok(Some(signed_bundle.into_signed_opaque_bundle()))
         } else {
             Ok(None)
         }
@@ -278,13 +286,41 @@ where
             }
         }
     }
+
+    fn construct_compact_signed_bundle(
+        &self,
+        signed_bundle: &SignedBundle<
+            Block::Extrinsic,
+            NumberFor<PBlock>,
+            PBlock::Hash,
+            Block::Hash,
+        >,
+    ) -> CompactSignedBundle<TxHash<TransactionPool>, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
+    {
+        CompactSignedBundle {
+            compact_bundle: CompactBundle {
+                header: signed_bundle.bundle.header.clone(),
+                receipts: signed_bundle.bundle.receipts.clone(),
+                extrinsics_hash: signed_bundle
+                    .bundle
+                    .extrinsics
+                    .iter()
+                    .map(|extrinsic| self.transaction_pool.hash_of(extrinsic))
+                    .collect(),
+            },
+            bundle_solution: signed_bundle.bundle_solution.clone(),
+            signature: signed_bundle.signature.clone(),
+        }
+    }
 }
 
 pub(crate) fn sign_new_bundle<Block: BlockT, PBlock: BlockT>(
     bundle: Bundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-    keystore: KeystorePtr,
+    keystore: &KeystorePtr,
     bundle_solution: BundleSolution<Block::Hash>,
-) -> sp_blockchain::Result<SignedOpaqueBundle<Block, PBlock>> {
+) -> sp_blockchain::Result<
+    SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+> {
     let to_sign = bundle.hash();
     let bundle_author = bundle_solution
         .proof_of_election()
@@ -311,7 +347,7 @@ pub(crate) fn sign_new_bundle<Block: BlockT, PBlock: BlockT>(
             // tracing::error!(error = ?e, "Failed to send transaction bundle");
             // }
 
-            Ok(signed_bundle.into_signed_opaque_bundle())
+            Ok(signed_bundle)
         }
         Ok(None) => Err(sp_blockchain::Error::Application(Box::from(
             "This should not happen as the existence of key was just checked",
