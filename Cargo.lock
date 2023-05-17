@@ -2374,7 +2374,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "domain-client-bundle-pool"
+name = "domain-bundles"
 version = "0.1.0"
 dependencies = [
  "sp-core",

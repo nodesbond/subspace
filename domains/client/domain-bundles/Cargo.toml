@@ -1,11 +1,11 @@
 [package]
-name = "domain-client-bundle-pool"
+name = "domain-bundles"
 version = "0.1.0"
 authors = ["Rahul Subramaniyam <rahul@subspace.network>"]
 edition = "2021"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
-description = "Subspace domain bundle pool."
+description = "Subspace domain bundles related functionality."
 include = [
     "/src",
     "/Cargo.toml",

@@ -1,4 +1,4 @@
-//! Compact bundle pool related defines.
+//! Bundle pool related defines.
 
 use sp_core::H256;
 use sp_domains::CompactSignedBundle;
