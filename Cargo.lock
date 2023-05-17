@@ -2377,6 +2377,8 @@ dependencies = [
 name = "domain-bundles"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "sc-network",
  "sp-core",
  "sp-domains",
 ]
@@ -9168,6 +9170,7 @@ name = "sc-subspace-block-relay"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "domain-bundles",
  "futures",
  "lru 0.10.0",
  "parity-scale-codec",
@@ -9178,6 +9181,8 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-transaction-pool-api",
+ "sp-core",
+ "sp-domains",
  "sp-runtime",
  "thiserror",
  "tracing",

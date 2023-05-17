@@ -46,6 +46,7 @@ use codec::{Decode, Encode};
 use std::time::Duration;
 
 mod consensus;
+mod execution;
 mod protocol;
 mod utils;
 
