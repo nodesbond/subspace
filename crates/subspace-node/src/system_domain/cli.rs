@@ -16,8 +16,9 @@
 
 use crate::core_domain::cli::CoreDomainCli;
 use clap::Parser;
+use domain_bundles::BundleRelayConfig;
 use domain_runtime_primitives::AccountId;
-use domain_service::{BundleRelayConfig, DomainConfiguration};
+use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams, SubstrateCli,

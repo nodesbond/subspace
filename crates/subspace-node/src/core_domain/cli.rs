@@ -19,7 +19,8 @@ use crate::core_domain::{
 };
 use clap::Parser;
 use core_evm_runtime::AccountId as AccountId20;
-use domain_service::{BundleRelayConfig, DomainConfiguration};
+use domain_bundles::BundleRelayConfig;
+use domain_service::DomainConfiguration;
 use once_cell::sync::OnceCell;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
