@@ -1,7 +1,7 @@
 mod worker;
 
 use self::worker::GossipWorker;
-use domain_bundles::BundleDownloader;
+use domain_bundles::{BundleDownloader, CompactBundlePool};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use sc_network::config::NonDefaultSetConfig;
@@ -248,8 +248,16 @@ where
 type BundleReceiver = TracingUnboundedReceiver<SignedBundleHash>;
 
 /// Parameters to run the executor gossip service.
-pub struct ExecutorGossipParams<Network, GossipSync, Executor, Extrinsic, Number, Hash, DomainHash>
-{
+pub struct ExecutorGossipParams<
+    Network,
+    GossipSync,
+    Executor,
+    Pool,
+    Extrinsic,
+    Number,
+    Hash,
+    DomainHash,
+> {
     /// Substrate network service.
     pub network: Network,
     /// Syncing service an event stream for peers.
@@ -258,8 +266,11 @@ pub struct ExecutorGossipParams<Network, GossipSync, Executor, Extrinsic, Number
     pub executor: Executor,
     /// Stream of transaction bundle produced locally.
     pub bundle_receiver: BundleReceiver,
-    /// Handle to download bundles from peers.
-    pub bundle_downloader: Option<Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>>,
+    /// Components for bundle syncing if enabled.
+    pub bundle_sync: Option<(
+        Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
+        Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>,
+    )>,
 }
 
 /// Starts the executor gossip worker.
@@ -269,6 +280,7 @@ pub async fn start_gossip_worker<
     Network,
     GossipSync,
     Executor,
+    Pool,
     Extrinsic,
     Number,
     Hash,
@@ -278,6 +290,7 @@ pub async fn start_gossip_worker<
         Network,
         GossipSync,
         Executor,
+        Pool,
         Extrinsic,
         Number,
         Hash,
@@ -295,7 +308,7 @@ pub async fn start_gossip_worker<
         sync,
         executor,
         bundle_receiver,
-        bundle_downloader,
+        bundle_sync,
     } = gossip_params;
 
     let gossip_validator = Arc::new(GossipValidator::new(executor));

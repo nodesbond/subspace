@@ -518,9 +518,9 @@ where
             sync: sync_service.clone(),
             executor: gossip_message_validator.clone(),
             bundle_receiver,
-            bundle_downloader: bundle_relay_components
+            bundle_sync: bundle_relay_components
                 .as_ref()
-                .map(|c| c.download_client.clone()),
+                .map(|c| (c.bundle_pool.clone(), c.download_client.clone())),
         });
     spawn_essential.spawn_essential_blocking(
         "system-domain-gossip",
