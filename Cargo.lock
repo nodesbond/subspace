@@ -9184,7 +9184,6 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-transaction-pool-api",
- "sp-core",
  "sp-domains",
  "sp-runtime",
  "thiserror",
