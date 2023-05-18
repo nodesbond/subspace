@@ -2,6 +2,7 @@
 
 use crate::CompactSignedBundleForPool;
 use sc_transaction_pool_api::TransactionPool;
+use sp_core::H256;
 use sp_domains::{CompactSignedBundle, SignedBundleHash};
 
 /// Pool of compact signed bundles.

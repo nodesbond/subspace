@@ -27,7 +27,6 @@ core-eth-relay-runtime = { version = "0.1.0", path = "../../domains/runtime/core
 core-evm-runtime = { version = "0.1.0", path = "../../domains/runtime/core-evm" }
 core-payments-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/core-payments" }
 dirs = "5.0.0"
-domain-bundles = { version = "0.1.0", path = "../../domains/client/domain-bundles" }
 domain-client-executor = { version = "0.1.0", path = "../../domains/client/domain-executor" }
 domain-eth-service = { version = "0.1.0", path = "../../domains/client/eth-service" }
 domain-service = { version = "0.1.0", path = "../../domains/service" }

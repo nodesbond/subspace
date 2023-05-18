@@ -1,6 +1,7 @@
 //! Bundle download related defines.
 
 use sc_network::PeerId;
+use sp_core::H256;
 use sp_domains::{SignedBundle, SignedBundleHash};
 
 /// The serving side of the bundle server. It runs a single instance

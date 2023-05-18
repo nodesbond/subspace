@@ -2378,10 +2378,9 @@ name = "domain-bundles"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "futures",
  "sc-network",
- "sc-service",
  "sc-transaction-pool-api",
+ "sp-core",
  "sp-domains",
 ]
 
@@ -11026,7 +11025,6 @@ dependencies = [
  "core-payments-domain-runtime",
  "cross-domain-message-gossip",
  "dirs",
- "domain-bundles",
  "domain-client-executor",
  "domain-eth-service",
  "domain-runtime-primitives",
