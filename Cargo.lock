@@ -2602,6 +2602,7 @@ dependencies = [
  "sc-rpc-api",
  "sc-rpc-spec-v2",
  "sc-service",
+ "sc-subspace-block-relay",
  "sc-telemetry",
  "sc-transaction-pool",
  "sc-transaction-pool-api",

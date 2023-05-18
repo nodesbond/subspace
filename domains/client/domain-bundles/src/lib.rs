@@ -1,5 +1,5 @@
 mod bundle_downloader;
-mod bundle_pool;
+pub mod bundle_pool;
 
 use sc_transaction_pool_api::TxHash;
 use sp_domains::{CompactBundle, CompactSignedBundle};

@@ -8,19 +8,19 @@ use sc_transaction_pool_api::TransactionPool;
 use sp_domains::{SignedBundle, SignedBundleHash};
 use std::sync::Arc;
 
-struct ExecutionRelayClient<Pool, BundlePool> {
+struct ExecutionRelayClient<Pool, Number, Hash, DomainHash> {
     network: Arc<NetworkWrapper>,
     protocol_name: ProtocolName,
     transaction_pool: Arc<Pool>,
-    bundle_pool: Arc<BundlePool>,
+    bundle_pool: Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
 }
 
 #[async_trait::async_trait]
-impl<Pool, BundlePool, Extrinsic, Number, Hash, DomainHash>
-    BundleDownloader<Extrinsic, Number, Hash, DomainHash> for ExecutionRelayClient<Pool, BundlePool>
+impl<Pool, Extrinsic, Number, Hash, DomainHash>
+    BundleDownloader<Extrinsic, Number, Hash, DomainHash>
+    for ExecutionRelayClient<Pool, Number, Hash, DomainHash>
 where
     Pool: TransactionPool,
-    BundlePool: CompactBundlePool<Pool, Number, Hash, DomainHash>,
     Number: Send + Sync,
     Hash: Send + Sync,
     DomainHash: Send + Sync,
@@ -43,21 +43,20 @@ impl BundleServer for ExecutionRelayServer {
     }
 }
 
-pub fn build_execution_relay<Pool, BundlePool, Extrinsic, Number, Hash, DomainHash>(
+pub fn build_execution_relay<Pool, Extrinsic, Number, Hash, DomainHash>(
     network: Arc<NetworkWrapper>,
     protocol_name: ProtocolName,
     transaction_pool: Arc<Pool>,
-    bundle_pool: Arc<BundlePool>,
+    bundle_pool: Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
 ) -> (
     Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>,
-    Arc<dyn BundleServer>,
+    Box<dyn BundleServer>,
 )
 where
     Pool: TransactionPool + 'static,
-    BundlePool: CompactBundlePool<Pool, Number, Hash, DomainHash> + 'static,
-    Number: Send + Sync,
-    Hash: Send + Sync,
-    DomainHash: Send + Sync,
+    Number: Send + Sync + 'static,
+    Hash: Send + Sync + 'static,
+    DomainHash: Send + Sync + 'static,
 {
     let client = Arc::new(ExecutionRelayClient {
         network,
@@ -65,6 +64,6 @@ where
         transaction_pool,
         bundle_pool,
     });
-    let server = Arc::new(ExecutionRelayServer);
+    let server = Box::new(ExecutionRelayServer);
     (client, server)
 }

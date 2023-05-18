@@ -70,3 +70,14 @@ where
         todo!()
     }
 }
+
+pub fn build_bundle_pool<Pool, Number, Hash, DomainHash>(
+) -> std::sync::Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>
+where
+    Pool: TransactionPool + 'static,
+    Number: Send + Sync + 'static,
+    Hash: Send + Sync + 'static,
+    DomainHash: Send + Sync + 'static,
+{
+    std::sync::Arc::new(CompactBundlePoolImpl::new())
+}
