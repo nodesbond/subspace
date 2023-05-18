@@ -266,8 +266,9 @@ where
             if let Some(bundle_pool) = self.bundle_pool.as_ref() {
                 // Add the compact bundle to the pool and advertise the bundle hash
                 // if relay is enabled
+                let bundle_hash = signed_bundle.hash();
                 let compact_signed_bundle = self.construct_compact_signed_bundle(&signed_bundle);
-                bundle_pool.add(compact_signed_bundle);
+                bundle_pool.add(bundle_hash, compact_signed_bundle);
 
                 /*
                 if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.hash()) {
