@@ -48,7 +48,7 @@ pub(super) struct DomainBundleProducer<
     system_domain_client: Arc<SClient>,
     client: Arc<Client>,
     parent_chain: ParentChain,
-    bundle_sender: Arc<BundleSender<Block, PBlock>>,
+    bundle_sender: Arc<BundleSender>,
     keystore: KeystorePtr,
     bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
@@ -152,7 +152,7 @@ where
             PClient,
             TransactionPool,
         >,
-        bundle_sender: Arc<BundleSender<Block, PBlock>>,
+        bundle_sender: Arc<BundleSender>,
         keystore: KeystorePtr,
         transaction_pool: Arc<TransactionPool>,
         bundle_pool: Option<

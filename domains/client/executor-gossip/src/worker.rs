@@ -18,7 +18,7 @@ where
 {
     gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-    bundle_receiver: BundleReceiver<Block, PBlock>,
+    bundle_receiver: BundleReceiver,
 }
 
 impl<PBlock, Block, Executor> GossipWorker<PBlock, Block, Executor>
@@ -30,7 +30,7 @@ where
     pub(super) fn new(
         gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
         gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-        bundle_receiver: BundleReceiver<Block, PBlock>,
+        bundle_receiver: BundleReceiver,
     ) -> Self {
         Self {
             gossip_validator,
@@ -78,7 +78,7 @@ where
                 }
                 bundle = self.bundle_receiver.next().fuse() => {
                     if let Some(bundle) = bundle {
-                        self.gossip_bundle(bundle);
+                        //self.gossip_bundle(bundle);
                     }
                 }
                 _ = gossip_engine.fuse() => {

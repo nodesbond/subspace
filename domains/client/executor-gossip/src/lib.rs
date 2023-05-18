@@ -12,7 +12,7 @@ use sc_network_gossip::{
 };
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
-use sp_domains::SignedBundle;
+use sp_domains::{SignedBundle, SignedBundleHash};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -244,17 +244,10 @@ where
     }
 }
 
-type BundleReceiver<Block, PBlock> = TracingUnboundedReceiver<
-    SignedBundle<
-        <Block as BlockT>::Extrinsic,
-        NumberFor<PBlock>,
-        <PBlock as BlockT>::Hash,
-        <Block as BlockT>::Hash,
-    >,
->;
+type BundleReceiver = TracingUnboundedReceiver<SignedBundleHash>;
 
 /// Parameters to run the executor gossip service.
-pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, GossipSync, Executor> {
+pub struct ExecutorGossipParams<Network, GossipSync, Executor> {
     /// Substrate network service.
     pub network: Network,
     /// Syncing service an event stream for peers.
@@ -262,12 +255,12 @@ pub struct ExecutorGossipParams<PBlock: BlockT, Block: BlockT, Network, GossipSy
     /// Executor instance.
     pub executor: Executor,
     /// Stream of transaction bundle produced locally.
-    pub bundle_receiver: BundleReceiver<Block, PBlock>,
+    pub bundle_receiver: BundleReceiver,
 }
 
 /// Starts the executor gossip worker.
 pub async fn start_gossip_worker<PBlock, Block, Network, GossipSync, Executor>(
-    gossip_params: ExecutorGossipParams<PBlock, Block, Network, GossipSync, Executor>,
+    gossip_params: ExecutorGossipParams<Network, GossipSync, Executor>,
 ) where
     PBlock: BlockT,
     Block: BlockT,

@@ -116,7 +116,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnNamed;
-use sp_domains::{ExecutionReceipt, SignedBundle};
+use sp_domains::{ExecutionReceipt, SignedBundleHash};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
@@ -133,14 +133,7 @@ type TransactionFor<Backend, Block> =
         HashFor<Block>,
     >>::Transaction;
 
-type BundleSender<Block, PBlock> = TracingUnboundedSender<
-    SignedBundle<
-        <Block as BlockT>::Extrinsic,
-        NumberFor<PBlock>,
-        <PBlock as BlockT>::Hash,
-        <Block as BlockT>::Hash,
-    >,
->;
+type BundleSender = TracingUnboundedSender<SignedBundleHash>;
 
 /// Notification streams from the primary chain driving the executor.
 pub struct ExecutorStreams<PBlock, IBNS, CIBNS, NSNS> {
@@ -188,7 +181,7 @@ pub struct EssentialExecutorParams<
     pub is_authority: bool,
     pub keystore: KeystorePtr,
     pub spawner: Box<dyn SpawnNamed + Send + Sync>,
-    pub bundle_sender: Arc<BundleSender<Block, PBlock>>,
+    pub bundle_sender: Arc<BundleSender>,
     pub executor_streams: ExecutorStreams<PBlock, IBNS, CIBNS, NSNS>,
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: Arc<BI>,
