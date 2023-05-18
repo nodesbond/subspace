@@ -50,6 +50,7 @@ fn topic<Block: BlockT>() -> Block::Hash {
 #[derive(Debug, Encode, Decode)]
 pub enum GossipMessage<PBlock: BlockT, Block: BlockT> {
     Bundle(SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
+    BundleHash(SignedBundleHash),
 }
 
 impl<PBlock: BlockT, Block: BlockT>
@@ -60,7 +61,7 @@ impl<PBlock: BlockT, Block: BlockT>
     fn from(
         bundle: SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) -> Self {
-        Self::Bundle(bundle)
+        Self::BundleHash(bundle.hash())
     }
 }
 
@@ -71,8 +72,6 @@ pub enum Action {
     Empty,
     /// Gossip the bundle message to other peers.
     RebroadcastBundle,
-    /// Gossip the execution exceipt message to other peers.
-    RebroadcastExecutionReceipt,
 }
 
 impl Action {
@@ -151,6 +150,7 @@ where
                     _ => ValidationResult::ProcessAndDiscard(self.topic),
                 }
             }
+            _ => todo!(),
         }
     }
 }

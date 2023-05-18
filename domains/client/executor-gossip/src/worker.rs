@@ -57,7 +57,11 @@ where
                 .lock()
                 .messages_for(topic::<Block>())
                 .filter_map(|notification| async move {
-                    GossipMessage::<PBlock, Block>::decode(&mut &notification.message[..]).ok()
+                    notification.sender.and_then(|sender| {
+                        GossipMessage::<PBlock, Block>::decode(&mut &notification.message[..])
+                            .ok()
+                            .map(|msg| (sender, msg))
+                    })
                 }),
         );
 
@@ -67,10 +71,11 @@ where
 
             futures::select! {
                 gossip_message = incoming.next().fuse() => {
-                    if let Some(message) = gossip_message {
+                    if let Some((sender, message)) = gossip_message {
                         tracing::debug!(target: LOG_TARGET, ?message, "Rebroadcasting an executor gossip message");
                         match message {
                             GossipMessage::Bundle(bundle) => self.gossip_bundle(bundle),
+                            _ => todo!(),
                         }
                     } else {
                         return
