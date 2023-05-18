@@ -1,6 +1,7 @@
 mod worker;
 
 use self::worker::GossipWorker;
+use domain_bundles::BundleDownloader;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use sc_network::config::NonDefaultSetConfig;
@@ -247,7 +248,8 @@ where
 type BundleReceiver = TracingUnboundedReceiver<SignedBundleHash>;
 
 /// Parameters to run the executor gossip service.
-pub struct ExecutorGossipParams<Network, GossipSync, Executor> {
+pub struct ExecutorGossipParams<Network, GossipSync, Executor, Extrinsic, Number, Hash, DomainHash>
+{
     /// Substrate network service.
     pub network: Network,
     /// Syncing service an event stream for peers.
@@ -256,11 +258,31 @@ pub struct ExecutorGossipParams<Network, GossipSync, Executor> {
     pub executor: Executor,
     /// Stream of transaction bundle produced locally.
     pub bundle_receiver: BundleReceiver,
+    /// Handle to download bundles from peers.
+    pub bundle_downloader: Option<Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>>,
 }
 
 /// Starts the executor gossip worker.
-pub async fn start_gossip_worker<PBlock, Block, Network, GossipSync, Executor>(
-    gossip_params: ExecutorGossipParams<Network, GossipSync, Executor>,
+pub async fn start_gossip_worker<
+    PBlock,
+    Block,
+    Network,
+    GossipSync,
+    Executor,
+    Extrinsic,
+    Number,
+    Hash,
+    DomainHash,
+>(
+    gossip_params: ExecutorGossipParams<
+        Network,
+        GossipSync,
+        Executor,
+        Extrinsic,
+        Number,
+        Hash,
+        DomainHash,
+    >,
 ) where
     PBlock: BlockT,
     Block: BlockT,
@@ -273,6 +295,7 @@ pub async fn start_gossip_worker<PBlock, Block, Network, GossipSync, Executor>(
         sync,
         executor,
         bundle_receiver,
+        bundle_downloader,
     } = gossip_params;
 
     let gossip_validator = Arc::new(GossipValidator::new(executor));

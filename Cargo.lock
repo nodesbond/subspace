@@ -2466,6 +2466,7 @@ dependencies = [
 name = "domain-client-executor-gossip"
 version = "0.1.0"
 dependencies = [
+ "domain-bundles",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.1",

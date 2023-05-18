@@ -1,6 +1,6 @@
 use crate::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
 use crate::providers::{BlockImportProvider, RpcProvider};
-use crate::{DomainConfiguration, FullBackend, FullClient};
+use crate::{BundleRelayComponents, DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
 use domain_bundles::{CompactBundlePool, CompactBundlePoolImpl};
 use domain_client_consensus_relay_chain::DomainBlockImport;
@@ -454,24 +454,27 @@ where
         .network
         .extra_sets
         .push(domain_client_executor_gossip::executor_gossip_peers_set_config());
-    let bundle_pool: Option<Arc<dyn CompactBundlePool<_, _, _, _>>> =
-        if let Some(relay_config) = &core_domain_config.bundle_relay_config {
-            core_domain_config
-                .service_config
-                .network
-                .request_response_protocols
-                .push(relay_config.request_response_protocol.clone());
-            Some(Arc::new(CompactBundlePoolImpl::new()))
-        } else {
-            None
-        };
-    println!("xxx: new_full_core(): domain_id = {domain_id:?}, core_domain_config = {core_domain_config:?}");
 
     let params = new_partial::<_, _, _, Block, SBlock, PBlock, Provider>(
         &core_domain_config.service_config,
         system_domain_client.clone(),
         &provider,
     )?;
+    let bundle_relay_components: Option<BundleRelayComponents<_, Block::Extrinsic, _, _, _>> =
+        if let Some(relay_config) = &core_domain_config.bundle_relay_config {
+            core_domain_config
+                .service_config
+                .network
+                .request_response_protocols
+                .push(relay_config.request_response_protocol.clone());
+            Some(BundleRelayComponents::new(
+                params.transaction_pool.clone(),
+                relay_config,
+            ))
+        } else {
+            None
+        };
+    println!("xxx: new_full_core(): domain_id = {domain_id:?}, core_domain_config = {core_domain_config:?}");
 
     let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
 
@@ -494,6 +497,11 @@ where
             warp_sync_params: None,
             block_relay: None,
         })?;
+    if let Some(bundle_relay_components) = &bundle_relay_components {
+        bundle_relay_components
+            .network_wrapper
+            .set(network_service.clone());
+    }
 
     let is_authority = core_domain_config.service_config.role.is_authority();
     core_domain_config.service_config.rpc_id_provider = provider.rpc_id();
@@ -589,7 +597,9 @@ where
             domain_confirmation_depth,
             block_import,
         },
-        bundle_pool,
+        bundle_relay_components
+            .as_ref()
+            .map(|c| c.bundle_pool.clone()),
     )
     .await?;
 
@@ -611,6 +621,9 @@ where
             sync: sync_service.clone(),
             executor: gossip_message_validator,
             bundle_receiver,
+            bundle_downloader: bundle_relay_components
+                .as_ref()
+                .map(|c| c.download_client.clone()),
         });
     spawn_essential.spawn_essential_blocking("core-domain-gossip", None, Box::pin(executor_gossip));
 
