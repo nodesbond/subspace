@@ -10,7 +10,7 @@ mod system_domain_tx_pre_validator;
 pub use self::core_domain::{new_full_core, CoreDomainExecutor, CoreDomainParams, NewFullCore};
 pub use self::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
 pub use self::system_domain::{new_full_system, FullPool, NewFullSystem};
-use domain_bundles::{BundleDownloader, BundleServer, CompactBundlePool};
+use domain_bundles::{build_bundle_pool, BundleDownloader, BundleServer, CompactBundlePool};
 use futures::channel::mpsc::{self, Receiver};
 use sc_executor::NativeElseWasmExecutor;
 use sc_service::config::{IncomingRequest, RequestResponseConfig};
@@ -91,7 +91,7 @@ where
     DomainHash: Send + Sync + 'static,
 {
     pub fn new(transaction_pool: Arc<Pool>, config: &BundleRelayConfig) -> Self {
-        let bundle_pool = domain_bundles::bundle_pool::build_bundle_pool();
+        let bundle_pool = build_bundle_pool();
         let network_wrapper = Arc::new(NetworkWrapper::default());
         let (download_client, download_server) = build_execution_relay(
             network_wrapper.clone(),
