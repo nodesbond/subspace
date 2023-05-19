@@ -59,6 +59,10 @@ where
             .await;
         self.in_progress.lock().remove(&hash);
 
-        ret.map(|bundle| Some(bundle))
+        ret.map(|bundle| {
+            // Update the pool with the downloaded entry
+            self.bundle_pool.add(&bundle);
+            Some(bundle)
+        })
     }
 }

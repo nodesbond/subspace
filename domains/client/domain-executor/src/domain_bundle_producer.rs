@@ -4,7 +4,7 @@ use crate::parent_chain::ParentChainInterface;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use codec::Decode;
-use domain_bundles::{compact_signed_bundle, CompactBundlePool};
+use domain_bundles::CompactBundlePool;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::{NumberFor, ProvideRuntimeApi};
@@ -253,18 +253,10 @@ where
             if let Some(bundle_pool) = self.bundle_pool.as_ref() {
                 // Add the compact bundle to the pool and advertise the bundle hash
                 // if relay is enabled
-                let bundle_hash = signed_bundle.hash();
-                let compact_signed_bundle = compact_signed_bundle::<Block, PBlock, TransactionPool>(
-                    self.transaction_pool.as_ref(),
-                    &signed_bundle,
-                );
-                bundle_pool.add(bundle_hash, compact_signed_bundle);
-
-                /*
+                bundle_pool.add(&signed_bundle);
                 if let Err(e) = self.bundle_sender.unbounded_send(signed_bundle.hash()) {
                     tracing::error!(error = ?e, "Failed to send transaction bundle");
                 }
-                 */
             }
 
             Ok(Some(signed_bundle.into_signed_opaque_bundle()))

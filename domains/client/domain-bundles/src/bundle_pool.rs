@@ -2,8 +2,9 @@
 
 use crate::CompactSignedBundleForPool;
 use sc_transaction_pool_api::TransactionPool;
-use sp_domains::SignedBundleHash;
+use sp_domains::{SignedBundle, SignedBundleHash};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use std::sync::Arc;
 
 /// Pool of compact signed bundles.
 pub trait CompactBundlePool<Block, PBlock, Pool>: Send + Sync
@@ -12,12 +13,15 @@ where
     PBlock: BlockT,
     Pool: TransactionPool<Block = Block>,
 {
-    /// Adds an entry to the pool.
-    /// The key is the bundle hash, value is the compact signed bundle
+    /// Converts te signed bundle to the compact version and adds to the pool.
     fn add(
         &self,
-        hash: SignedBundleHash,
-        bundle: CompactSignedBundleForPool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        signed_bundle: &SignedBundle<
+            Block::Extrinsic,
+            NumberFor<PBlock>,
+            PBlock::Hash,
+            Block::Hash,
+        >,
     );
 
     /// Looks up the signed bundle for the given bundle hash.
@@ -32,6 +36,7 @@ where
 
 /// Compact bundle pool implementation.
 pub struct CompactBundlePoolImpl<Block, PBlock, Pool> {
+    transaction_pool: Arc<Pool>,
     _p: (
         std::marker::PhantomData<Block>,
         std::marker::PhantomData<PBlock>,
@@ -45,8 +50,9 @@ where
     PBlock: BlockT,
     Pool: TransactionPool<Block = Block>,
 {
-    pub fn new() -> Self {
+    pub fn new(transaction_pool: Arc<Pool>) -> Self {
         Self {
+            transaction_pool,
             _p: Default::default(),
         }
     }
@@ -61,8 +67,12 @@ where
 {
     fn add(
         &self,
-        hash: SignedBundleHash,
-        bundle: CompactSignedBundleForPool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        signed_bundle: &SignedBundle<
+            Block::Extrinsic,
+            NumberFor<PBlock>,
+            PBlock::Hash,
+            Block::Hash,
+        >,
     ) {
         todo!()
     }
@@ -81,11 +91,12 @@ where
 }
 
 pub fn build_bundle_pool<Block, PBlock, Pool>(
+    transaction_pool: Arc<Pool>,
 ) -> std::sync::Arc<dyn CompactBundlePool<Block, PBlock, Pool>>
 where
     Block: BlockT + 'static,
     PBlock: BlockT + 'static,
     Pool: TransactionPool<Block = Block> + 'static,
 {
-    std::sync::Arc::new(CompactBundlePoolImpl::new())
+    std::sync::Arc::new(CompactBundlePoolImpl::new(transaction_pool))
 }

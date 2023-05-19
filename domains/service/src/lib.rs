@@ -17,7 +17,7 @@ use sc_service::config::{IncomingRequest, RequestResponseConfig};
 use sc_service::{Configuration as ServiceConfiguration, TFullClient};
 use sc_subspace_block_relay::{build_execution_relay, NetworkWrapper};
 use sc_transaction_pool_api::TransactionPool;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -93,7 +93,7 @@ where
     Pool: TransactionPool<Block = Block> + 'static,
 {
     pub fn new(transaction_pool: Arc<Pool>, config: &BundleRelayConfig) -> Self {
-        let bundle_pool = build_bundle_pool();
+        let bundle_pool = build_bundle_pool(transaction_pool.clone());
         let network_wrapper = Arc::new(NetworkWrapper::default());
         let (download_client, download_server) = build_execution_relay(
             network_wrapper.clone(),
