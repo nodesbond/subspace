@@ -45,6 +45,10 @@ use subspace_runtime_primitives::Index as Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
+/// TODO: this is tentative for now.
+const SYSTEM_DOMAIN_RELAY_QUEUE_SIZE: usize = 1024;
+const SYSTEM_DOMAIN_RELAY_PROTOCOL: &str = "/subspace/system-domain-bundle-relay/1";
+
 type SystemDomainExecutor<PBlock, PClient, RuntimeApi, ExecutorDispatch> = SystemExecutor<
     Block,
     PBlock,
@@ -390,16 +394,18 @@ where
         primary_chain_client.clone(),
     )?;
     let bundle_relay_components: Option<BundleRelayComponents<_, _, _>> =
-        if let Some(relay_config) = &system_domain_config.bundle_relay_config {
+        if system_domain_config.enable_bundle_relay {
+            let components = BundleRelayComponents::new(
+                SYSTEM_DOMAIN_RELAY_PROTOCOL.to_string(),
+                SYSTEM_DOMAIN_RELAY_QUEUE_SIZE,
+                params.transaction_pool.clone(),
+            );
             system_domain_config
                 .service_config
                 .network
                 .request_response_protocols
-                .push(relay_config.request_response_protocol.clone());
-            Some(BundleRelayComponents::new(
-                params.transaction_pool.clone(),
-                relay_config,
-            ))
+                .push(components.request_response_protocol.clone());
+            Some(components)
         } else {
             None
         };

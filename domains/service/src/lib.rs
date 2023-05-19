@@ -32,35 +32,7 @@ pub type FullBackend<Block> = sc_service::TFullBackend<Block>;
 pub struct DomainConfiguration<AccountId> {
     pub service_config: ServiceConfiguration,
     pub maybe_relayer_id: Option<AccountId>,
-    /// The domain bundle relay config if enabled
-    pub bundle_relay_config: Option<BundleRelayConfig>,
-}
-
-/// Bundle relay config
-#[derive(Debug)]
-pub struct BundleRelayConfig {
-    /// Request/response protocol config
-    pub request_response_protocol: RequestResponseConfig,
-
-    /// Receiver for the incoming requests
-    request_receiver: Receiver<IncomingRequest>,
-}
-
-impl BundleRelayConfig {
-    pub fn new(protocol_name: String, incoming_queue_size: usize) -> Self {
-        let (request_sender, request_receiver) = mpsc::channel(incoming_queue_size);
-        Self {
-            request_response_protocol: RequestResponseConfig {
-                name: protocol_name.into(),
-                fallback_names: Vec::new(),
-                max_request_size: 1024 * 1024,
-                max_response_size: 16 * 1024 * 1024,
-                request_timeout: Duration::from_secs(20),
-                inbound_queue: Some(request_sender),
-            },
-            request_receiver,
-        }
-    }
+    pub enable_bundle_relay: bool,
 }
 
 /// The components for bundle relay
@@ -70,20 +42,26 @@ where
     PBlock: BlockT,
     Pool: TransactionPool<Block = Block>,
 {
-    /// The transaction pool
+    /// Transaction pool
     pub transaction_pool: Arc<Pool>,
 
-    /// The compact bundle pool
+    /// Compact bundle pool
     pub bundle_pool: Arc<dyn CompactBundlePool<Block, PBlock, Pool>>,
 
-    /// The bundle download client
+    /// Bundle download client
     pub download_client: Arc<dyn BundleDownloader<Block, PBlock, Pool>>,
 
-    /// The bundle server
+    /// Bundle server
     pub download_server: Box<dyn BundleServer>,
 
-    /// The network wrapper for the client
+    /// Network wrapper for the client
     pub network_wrapper: Arc<NetworkWrapper>,
+
+    /// Request/response protocol for network config
+    pub request_response_protocol: RequestResponseConfig,
+
+    /// Receiver for the incoming requests
+    pub request_receiver: Receiver<IncomingRequest>,
 }
 
 impl<Block, PBlock, Pool> BundleRelayComponents<Block, PBlock, Pool>
@@ -92,12 +70,26 @@ where
     PBlock: BlockT + 'static,
     Pool: TransactionPool<Block = Block> + 'static,
 {
-    pub fn new(transaction_pool: Arc<Pool>, config: &BundleRelayConfig) -> Self {
+    pub fn new(
+        protocol_name: String,
+        incoming_queue_size: usize,
+        transaction_pool: Arc<Pool>,
+    ) -> Self {
+        let (request_sender, request_receiver) = mpsc::channel(incoming_queue_size);
+        let request_response_protocol = RequestResponseConfig {
+            name: protocol_name.into(),
+            fallback_names: Vec::new(),
+            max_request_size: 1024 * 1024,
+            max_response_size: 16 * 1024 * 1024,
+            request_timeout: Duration::from_secs(20),
+            inbound_queue: Some(request_sender),
+        };
+
         let bundle_pool = build_bundle_pool(transaction_pool.clone());
         let network_wrapper = Arc::new(NetworkWrapper::default());
         let (download_client, download_server) = build_execution_relay(
             network_wrapper.clone(),
-            config.request_response_protocol.name.clone(),
+            request_response_protocol.name.clone(),
             transaction_pool.clone(),
             bundle_pool.clone(),
         );
@@ -108,6 +100,8 @@ where
             download_client,
             download_server,
             network_wrapper,
+            request_response_protocol,
+            request_receiver,
         }
     }
 }

@@ -54,6 +54,9 @@ use subspace_transaction_pool::{FullChainApiWrapper, FullPool};
 use substrate_frame_rpc_system::AccountNonceApi;
 use system_runtime_primitives::SystemDomainApi;
 
+/// TODO: this is tentative for now.
+const CORE_DOMAIN_RELAY_QUEUE_SIZE: usize = 1024;
+
 type BlockImportOf<Block, Client, Provider> = <Provider as BlockImportProvider<Block, Client>>::BI;
 
 pub type CoreDomainExecutor<
@@ -460,16 +463,21 @@ where
         &provider,
     )?;
     let bundle_relay_components: Option<BundleRelayComponents<_, _, _>> =
-        if let Some(relay_config) = &core_domain_config.bundle_relay_config {
+        if core_domain_config.enable_bundle_relay {
+            let components = BundleRelayComponents::new(
+                format!(
+                    "/subspace/core-domain-bundle-relay/{}",
+                    u32::from(domain_id)
+                ),
+                CORE_DOMAIN_RELAY_QUEUE_SIZE,
+                params.transaction_pool.clone(),
+            );
             core_domain_config
                 .service_config
                 .network
                 .request_response_protocols
-                .push(relay_config.request_response_protocol.clone());
-            Some(BundleRelayComponents::new(
-                params.transaction_pool.clone(),
-                relay_config,
-            ))
+                .push(components.request_response_protocol.clone());
+            Some(components)
         } else {
             None
         };

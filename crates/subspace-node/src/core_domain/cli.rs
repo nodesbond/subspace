@@ -19,7 +19,7 @@ use crate::core_domain::{
 };
 use clap::Parser;
 use core_evm_runtime::AccountId as AccountId20;
-use domain_service::{BundleRelayConfig, DomainConfiguration};
+use domain_service::DomainConfiguration;
 use once_cell::sync::OnceCell;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
@@ -35,9 +35,6 @@ use std::net::SocketAddr;
 use std::num::ParseIntError;
 use std::path::PathBuf;
 use std::str::FromStr;
-
-/// TODO: this is tentative for now.
-const CORE_DOMAIN_RELAY_QUEUE_SIZE: usize = 1024;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
@@ -150,23 +147,11 @@ impl CoreDomainCli {
             None
         };
 
-        let bundle_relay_config = if self.enable_bundle_relay {
-            Some(BundleRelayConfig::new(
-                format!(
-                    "/subspace/core-domain-bundle-relay/{}",
-                    u32::from(self.domain_id)
-                ),
-                CORE_DOMAIN_RELAY_QUEUE_SIZE,
-            ))
-        } else {
-            None
-        };
-
         let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
         Ok(DomainConfiguration {
             service_config,
             maybe_relayer_id,
-            bundle_relay_config,
+            enable_bundle_relay: self.enable_bundle_relay,
         })
     }
 }
