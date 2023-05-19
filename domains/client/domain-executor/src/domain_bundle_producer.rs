@@ -4,16 +4,14 @@ use crate::parent_chain::ParentChainInterface;
 use crate::utils::{to_number_primitive, ExecutorSlotInfo};
 use crate::BundleSender;
 use codec::Decode;
-use domain_bundles::CompactBundlePool;
+use domain_bundles::{compact_signed_bundle, CompactBundlePool};
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
-use sc_transaction_pool_api::TxHash;
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
-    Bundle, BundleSolution, CompactBundle, CompactSignedBundle, DomainId, ExecutorPublicKey,
-    ExecutorSignature, SignedBundle,
+    Bundle, BundleSolution, DomainId, ExecutorPublicKey, ExecutorSignature, SignedBundle,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Saturating, Zero};
@@ -267,7 +265,10 @@ where
                 // Add the compact bundle to the pool and advertise the bundle hash
                 // if relay is enabled
                 let bundle_hash = signed_bundle.hash();
-                let compact_signed_bundle = self.construct_compact_signed_bundle(&signed_bundle);
+                let compact_signed_bundle = compact_signed_bundle::<Block, PBlock, TransactionPool>(
+                    self.transaction_pool.as_ref(),
+                    &signed_bundle,
+                );
                 bundle_pool.add(bundle_hash, compact_signed_bundle);
 
                 /*
@@ -312,32 +313,6 @@ where
                     core_state_root,
                 })
             }
-        }
-    }
-
-    fn construct_compact_signed_bundle(
-        &self,
-        signed_bundle: &SignedBundle<
-            Block::Extrinsic,
-            NumberFor<PBlock>,
-            PBlock::Hash,
-            Block::Hash,
-        >,
-    ) -> CompactSignedBundle<TxHash<TransactionPool>, NumberFor<PBlock>, PBlock::Hash, Block::Hash>
-    {
-        CompactSignedBundle {
-            compact_bundle: CompactBundle {
-                header: signed_bundle.bundle.header.clone(),
-                receipts: signed_bundle.bundle.receipts.clone(),
-                extrinsics_hash: signed_bundle
-                    .bundle
-                    .extrinsics
-                    .iter()
-                    .map(|extrinsic| self.transaction_pool.hash_of(extrinsic))
-                    .collect(),
-            },
-            bundle_solution: signed_bundle.bundle_solution.clone(),
-            signature: signed_bundle.signature.clone(),
         }
     }
 }
