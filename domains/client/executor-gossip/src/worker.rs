@@ -1,6 +1,6 @@
 use crate::sync::BundleSync;
 use crate::{
-    topic, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator, LOG_TARGET,
+    topic, Action, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator, LOG_TARGET,
 };
 use domain_bundles::{BundleDownloader, CompactBundlePool};
 use futures::future::pending;
@@ -81,6 +81,14 @@ where
         &mut self,
         download_status: Result<Option<SignedBundle<Extrinsic, Number, Hash, DomainHash>>, String>,
     ) {
+        /*
+        let action = if let Ok(Some(bundle)) = &download_status {
+            self.gossip_validator.validate_bundle(bundle)
+        } else {
+            Action::Empty
+        };
+
+         */
     }
 
     pub(super) async fn run(mut self) {

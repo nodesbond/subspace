@@ -51,6 +51,7 @@ fn topic<Block: BlockT>() -> Block::Hash {
 /// This is the root type that gets encoded and sent on the network.
 #[derive(Debug, Encode, Decode)]
 pub enum GossipMessage<PBlock: BlockT, Block: BlockT> {
+    // Retaining Bundle() for backward compatibility
     Bundle(SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>),
     BundleHash(SignedBundleHash),
 }
@@ -135,24 +136,27 @@ where
 
     fn validate_message(&self, msg: GossipMessage<PBlock, Block>) -> ValidationResult<Block::Hash> {
         match msg {
-            GossipMessage::Bundle(bundle) => {
-                let outcome = self.executor.on_bundle(&bundle);
-                match outcome {
-                    Ok(action) if action.rebroadcast_bundle() => {
-                        ValidationResult::ProcessAndKeep(self.topic)
-                    }
-                    Err(err) => {
-                        tracing::debug!(
-                            target: LOG_TARGET,
-                            ?err,
-                            "Invalid GossipMessage::Bundle discarded"
-                        );
-                        ValidationResult::Discard
-                    }
-                    _ => ValidationResult::ProcessAndDiscard(self.topic),
-                }
+            GossipMessage::Bundle(bundle) => ValidationResult::Discard,
+            GossipMessage::BundleHash(_) => ValidationResult::ProcessAndDiscard(self.topic),
+        }
+    }
+
+    pub(crate) fn validate_bundle(
+        &self,
+        bundle: &SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+    ) -> Action {
+        let outcome = self.executor.on_bundle(&bundle);
+        match outcome {
+            Ok(action) if action.rebroadcast_bundle() => Action::RebroadcastBundle,
+            Err(err) => {
+                tracing::debug!(
+                    target: LOG_TARGET,
+                    ?err,
+                    "Invalid GossipMessage::Bundle discarded"
+                );
+                Action::Empty
             }
-            _ => todo!(),
+            _ => Action::Empty,
         }
     }
 }
