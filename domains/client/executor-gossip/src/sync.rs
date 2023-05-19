@@ -5,27 +5,28 @@ use parking_lot::Mutex;
 use sc_network::PeerId;
 use sc_transaction_pool_api::TransactionPool;
 use sp_domains::{SignedBundle, SignedBundleHash};
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::collections::HashSet;
 use std::sync::Arc;
 
-pub(crate) struct BundleSync<Pool, Extrinsic, Number, Hash, DomainHash> {
-    bundle_pool: Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
-    bundle_downloader: Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>,
+pub(crate) struct BundleSync<Pool, PBlock: BlockT, Block: BlockT> {
+    bundle_pool: Arc<dyn CompactBundlePool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+    bundle_downloader:
+        Arc<dyn BundleDownloader<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
     in_progress: Mutex<HashSet<SignedBundleHash>>,
 }
 
-impl<Pool, Extrinsic, Number, Hash, DomainHash>
-    BundleSync<Pool, Extrinsic, Number, Hash, DomainHash>
+impl<Pool, PBlock, Block> BundleSync<Pool, PBlock, Block>
 where
     Pool: TransactionPool,
-    Extrinsic: Send + Sync,
-    Number: Send + Sync,
-    Hash: Send + Sync,
-    DomainHash: Send + Sync,
+    PBlock: BlockT,
+    Block: BlockT,
 {
     pub(crate) fn new(
-        bundle_pool: Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
-        bundle_downloader: Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>,
+        bundle_pool: Arc<dyn CompactBundlePool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        bundle_downloader: Arc<
+            dyn BundleDownloader<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+        >,
     ) -> Self {
         Self {
             bundle_pool,
@@ -39,7 +40,10 @@ where
         &self,
         peer: PeerId,
         hash: SignedBundleHash,
-    ) -> Result<Option<SignedBundle<Extrinsic, Number, Hash, DomainHash>>, String> {
+    ) -> Result<
+        Option<SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+        String,
+    > {
         if self.bundle_pool.contains(&hash) {
             return Ok(None);
         }

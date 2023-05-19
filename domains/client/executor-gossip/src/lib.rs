@@ -78,7 +78,7 @@ pub enum Action {
 }
 
 impl Action {
-    fn rebroadcast_bundle(&self) -> bool {
+    pub fn rebroadcast_bundle(&self) -> bool {
         matches!(self, Self::RebroadcastBundle)
     }
 }
@@ -136,7 +136,7 @@ where
 
     fn validate_message(&self, msg: GossipMessage<PBlock, Block>) -> ValidationResult<Block::Hash> {
         match msg {
-            GossipMessage::Bundle(bundle) => ValidationResult::Discard,
+            GossipMessage::Bundle(_) => ValidationResult::Discard,
             GossipMessage::BundleHash(_) => ValidationResult::ProcessAndDiscard(self.topic),
         }
     }
@@ -280,27 +280,16 @@ pub struct ExecutorGossipParams<
 }
 
 /// Starts the executor gossip worker.
-pub async fn start_gossip_worker<
-    PBlock,
-    Block,
-    Network,
-    GossipSync,
-    Executor,
-    Pool,
-    Extrinsic,
-    Number,
-    Hash,
-    DomainHash,
->(
+pub async fn start_gossip_worker<PBlock, Block, Network, GossipSync, Executor, Pool>(
     gossip_params: ExecutorGossipParams<
         Network,
         GossipSync,
         Executor,
         Pool,
-        Extrinsic,
-        Number,
-        Hash,
-        DomainHash,
+        Block::Extrinsic,
+        NumberFor<PBlock>,
+        PBlock::Hash,
+        Block::Hash,
     >,
 ) where
     PBlock: BlockT,
@@ -309,10 +298,6 @@ pub async fn start_gossip_worker<
     Executor: GossipMessageHandler<PBlock, Block> + Send + Sync + 'static,
     GossipSync: GossipSyncing<Block> + 'static,
     Pool: TransactionPool + 'static,
-    Extrinsic: Send + Sync + 'static,
-    Number: Send + Sync + 'static,
-    Hash: Send + Sync + 'static,
-    DomainHash: Send + Sync + 'static,
 {
     let ExecutorGossipParams {
         network,

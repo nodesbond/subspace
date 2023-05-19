@@ -1,6 +1,6 @@
 use crate::sync::BundleSync;
 use crate::{
-    topic, Action, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator, LOG_TARGET,
+    topic, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator, LOG_TARGET,
 };
 use domain_bundles::{BundleDownloader, CompactBundlePool};
 use futures::future::pending;
@@ -11,7 +11,7 @@ use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
 use sc_transaction_pool_api::TransactionPool;
 use sp_domains::{SignedBundle, SignedBundleHash};
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -19,7 +19,7 @@ type DownloadFuture<Extrinsic, Number, Hash, DomainHash> = dyn Future<Output = R
     + Send;
 
 /// A worker plays the executor gossip protocol.
-pub struct GossipWorker<PBlock, Block, Executor, Pool, Extrinsic, Number, Hash, DomainHash>
+pub struct GossipWorker<PBlock, Block, Executor, Pool>
 where
     PBlock: BlockT,
     Block: BlockT,
@@ -28,30 +28,33 @@ where
     gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
     bundle_receiver: BundleReceiver,
-    bundle_sync: Option<Arc<BundleSync<Pool, Extrinsic, Number, Hash, DomainHash>>>,
-    pending_downloads:
-        FuturesUnordered<Pin<Box<DownloadFuture<Extrinsic, Number, Hash, DomainHash>>>>,
+    bundle_sync: Option<Arc<BundleSync<Pool, PBlock, Block>>>,
+    pending_downloads: FuturesUnordered<
+        Pin<Box<DownloadFuture<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>>,
+    >,
 }
 
-impl<PBlock, Block, Executor, Pool, Extrinsic, Number, Hash, DomainHash>
-    GossipWorker<PBlock, Block, Executor, Pool, Extrinsic, Number, Hash, DomainHash>
+impl<PBlock, Block, Executor, Pool> GossipWorker<PBlock, Block, Executor, Pool>
 where
     PBlock: BlockT,
     Block: BlockT,
     Executor: GossipMessageHandler<PBlock, Block>,
     Pool: TransactionPool + 'static,
-    Extrinsic: Send + Sync + 'static,
-    Number: Send + Sync + 'static,
-    Hash: Send + Sync + 'static,
-    DomainHash: Send + Sync + 'static,
 {
     pub(super) fn new(
         gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
         gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
         bundle_receiver: BundleReceiver,
         bundle_sync: Option<(
-            Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
-            Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>,
+            Arc<dyn CompactBundlePool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+            Arc<
+                dyn BundleDownloader<
+                    Block::Extrinsic,
+                    NumberFor<PBlock>,
+                    PBlock::Hash,
+                    Block::Hash,
+                >,
+            >,
         )>,
     ) -> Self {
         let ret = Self {
@@ -63,7 +66,12 @@ where
             pending_downloads: Default::default(),
         };
         ret.pending_downloads.push(Box::pin(pending::<
-            Result<Option<SignedBundle<Extrinsic, Number, Hash, DomainHash>>, String>,
+            Result<
+                Option<
+                    SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
+                >,
+                String,
+            >,
         >()));
         ret
     }
@@ -79,16 +87,20 @@ where
 
     fn on_download(
         &mut self,
-        download_status: Result<Option<SignedBundle<Extrinsic, Number, Hash, DomainHash>>, String>,
+        download_status: Result<
+            Option<SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+            String,
+        >,
     ) {
-        /*
-        let action = if let Ok(Some(bundle)) = &download_status {
-            self.gossip_validator.validate_bundle(bundle)
-        } else {
-            Action::Empty
-        };
-
-         */
+        if let Ok(Some(bundle)) = &download_status {
+            if self
+                .gossip_validator
+                .validate_bundle(bundle)
+                .rebroadcast_bundle()
+            {
+                self.gossip_bundle(bundle.hash());
+            }
+        }
     }
 
     pub(super) async fn run(mut self) {
