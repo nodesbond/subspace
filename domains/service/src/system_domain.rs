@@ -389,21 +389,20 @@ where
         &system_domain_config.service_config,
         primary_chain_client.clone(),
     )?;
-    let bundle_relay_components: Option<
-        BundleRelayComponents<_, <Block as BlockT>::Extrinsic, _, _, _>,
-    > = if let Some(relay_config) = &system_domain_config.bundle_relay_config {
-        system_domain_config
-            .service_config
-            .network
-            .request_response_protocols
-            .push(relay_config.request_response_protocol.clone());
-        Some(BundleRelayComponents::new(
-            params.transaction_pool.clone(),
-            relay_config,
-        ))
-    } else {
-        None
-    };
+    let bundle_relay_components: Option<BundleRelayComponents<_, _, _>> =
+        if let Some(relay_config) = &system_domain_config.bundle_relay_config {
+            system_domain_config
+                .service_config
+                .network
+                .request_response_protocols
+                .push(relay_config.request_response_protocol.clone());
+            Some(BundleRelayComponents::new(
+                params.transaction_pool.clone(),
+                relay_config,
+            ))
+        } else {
+            None
+        };
     println!("xxx: new_full_system(): system_domain_config = {system_domain_config:?}");
 
     let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;

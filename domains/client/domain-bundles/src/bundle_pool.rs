@@ -3,44 +3,48 @@
 use crate::CompactSignedBundleForPool;
 use sc_transaction_pool_api::TransactionPool;
 use sp_domains::SignedBundleHash;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 
 /// Pool of compact signed bundles.
-pub trait CompactBundlePool<Pool, Number, Hash, DomainHash>: Send + Sync
+pub trait CompactBundlePool<Block, PBlock, Pool>: Send + Sync
 where
-    Pool: TransactionPool,
-    Number: Send + Sync,
-    Hash: Send + Sync,
-    DomainHash: Send + Sync,
+    Block: BlockT,
+    PBlock: BlockT,
+    Pool: TransactionPool<Block = Block>,
 {
     /// Adds an entry to the pool.
     /// The key is the bundle hash, value is the compact signed bundle
     fn add(
         &self,
         hash: SignedBundleHash,
-        bundle: CompactSignedBundleForPool<Pool, Number, Hash, DomainHash>,
+        bundle: CompactSignedBundleForPool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     );
 
     /// Looks up the signed bundle for the given bundle hash.
     fn get(
         &self,
         hash: &SignedBundleHash,
-    ) -> Option<CompactSignedBundleForPool<Pool, Number, Hash, DomainHash>>;
+    ) -> Option<CompactSignedBundleForPool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>;
 
     /// Checks if the bundle is in the pool.
     fn contains(&self, hash: &SignedBundleHash) -> bool;
 }
 
 /// Compact bundle pool implementation.
-pub struct CompactBundlePoolImpl<Pool, Number, Hash, DomainHash> {
+pub struct CompactBundlePoolImpl<Block, PBlock, Pool> {
     _p: (
+        std::marker::PhantomData<Block>,
+        std::marker::PhantomData<PBlock>,
         std::marker::PhantomData<Pool>,
-        std::marker::PhantomData<Number>,
-        std::marker::PhantomData<Hash>,
-        std::marker::PhantomData<DomainHash>,
     ),
 }
 
-impl<Pool, Number, Hash, DomainHash> CompactBundlePoolImpl<Pool, Number, Hash, DomainHash> {
+impl<Block, PBlock, Pool> CompactBundlePoolImpl<Block, PBlock, Pool>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+    Pool: TransactionPool<Block = Block>,
+{
     pub fn new() -> Self {
         Self {
             _p: Default::default(),
@@ -48,41 +52,40 @@ impl<Pool, Number, Hash, DomainHash> CompactBundlePoolImpl<Pool, Number, Hash, D
     }
 }
 
-impl<Pool, Number, Hash, DomainHash> CompactBundlePool<Pool, Number, Hash, DomainHash>
-    for CompactBundlePoolImpl<Pool, Number, Hash, DomainHash>
+impl<Block, PBlock, Pool> CompactBundlePool<Block, PBlock, Pool>
+    for CompactBundlePoolImpl<Block, PBlock, Pool>
 where
-    Pool: TransactionPool,
-    Number: Send + Sync,
-    Hash: Send + Sync,
-    DomainHash: Send + Sync,
+    Block: BlockT,
+    PBlock: BlockT,
+    Pool: TransactionPool<Block = Block>,
 {
     fn add(
         &self,
-        _hash: SignedBundleHash,
-        _bundle: CompactSignedBundleForPool<Pool, Number, Hash, DomainHash>,
+        hash: SignedBundleHash,
+        bundle: CompactSignedBundleForPool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
     ) {
         todo!()
     }
 
     fn get(
         &self,
-        _hash: &SignedBundleHash,
-    ) -> Option<CompactSignedBundleForPool<Pool, Number, Hash, DomainHash>> {
+        hash: &SignedBundleHash,
+    ) -> Option<CompactSignedBundleForPool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
+    {
         todo!()
     }
 
-    fn contains(&self, _hash: &SignedBundleHash) -> bool {
+    fn contains(&self, hash: &SignedBundleHash) -> bool {
         todo!()
     }
 }
 
-pub fn build_bundle_pool<Pool, Number, Hash, DomainHash>(
-) -> std::sync::Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>
+pub fn build_bundle_pool<Block, PBlock, Pool>(
+) -> std::sync::Arc<dyn CompactBundlePool<Block, PBlock, Pool>>
 where
-    Pool: TransactionPool + 'static,
-    Number: Send + Sync + 'static,
-    Hash: Send + Sync + 'static,
-    DomainHash: Send + Sync + 'static,
+    Block: BlockT + 'static,
+    PBlock: BlockT + 'static,
+    Pool: TransactionPool<Block = Block> + 'static,
 {
     std::sync::Arc::new(CompactBundlePoolImpl::new())
 }

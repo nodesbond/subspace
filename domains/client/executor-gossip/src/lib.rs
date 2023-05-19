@@ -254,16 +254,7 @@ where
 type BundleReceiver = TracingUnboundedReceiver<SignedBundleHash>;
 
 /// Parameters to run the executor gossip service.
-pub struct ExecutorGossipParams<
-    Network,
-    GossipSync,
-    Executor,
-    Pool,
-    Extrinsic,
-    Number,
-    Hash,
-    DomainHash,
-> {
+pub struct ExecutorGossipParams<Network, GossipSync, Executor, Block, PBlock, Pool> {
     /// Substrate network service.
     pub network: Network,
     /// Syncing service an event stream for peers.
@@ -274,30 +265,21 @@ pub struct ExecutorGossipParams<
     pub bundle_receiver: BundleReceiver,
     /// Components for bundle syncing if enabled.
     pub bundle_sync: Option<(
-        Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
-        Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>,
+        Arc<dyn CompactBundlePool<Block, PBlock, Pool>>,
+        Arc<dyn BundleDownloader<Block, PBlock, Pool>>,
     )>,
 }
 
 /// Starts the executor gossip worker.
 pub async fn start_gossip_worker<PBlock, Block, Network, GossipSync, Executor, Pool>(
-    gossip_params: ExecutorGossipParams<
-        Network,
-        GossipSync,
-        Executor,
-        Pool,
-        Block::Extrinsic,
-        NumberFor<PBlock>,
-        PBlock::Hash,
-        Block::Hash,
-    >,
+    gossip_params: ExecutorGossipParams<Network, GossipSync, Executor, Block, PBlock, Pool>,
 ) where
     PBlock: BlockT,
     Block: BlockT,
     Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
     Executor: GossipMessageHandler<PBlock, Block> + Send + Sync + 'static,
     GossipSync: GossipSyncing<Block> + 'static,
-    Pool: TransactionPool + 'static,
+    Pool: TransactionPool<Block = Block> + 'static,
 {
     let ExecutorGossipParams {
         network,

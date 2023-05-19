@@ -40,7 +40,7 @@ pub(super) struct DomainBundleProducer<
     Block: BlockT,
     SBlock: BlockT,
     PBlock: BlockT,
-    TransactionPool: sc_transaction_pool_api::TransactionPool,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     domain_id: DomainId,
     system_domain_client: Arc<SClient>,
@@ -51,9 +51,7 @@ pub(super) struct DomainBundleProducer<
     bundle_election_solver: BundleElectionSolver<SBlock, PBlock, SClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, PBlock, PClient, TransactionPool>,
     transaction_pool: Arc<TransactionPool>,
-    bundle_pool: Option<
-        Arc<dyn CompactBundlePool<TransactionPool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-    >,
+    bundle_pool: Option<Arc<dyn CompactBundlePool<Block, PBlock, TransactionPool>>>,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
 
@@ -84,7 +82,7 @@ where
     SBlock: BlockT,
     PBlock: BlockT,
     ParentChain: Clone,
-    TransactionPool: sc_transaction_pool_api::TransactionPool,
+    TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     fn clone(&self) -> Self {
         Self {
@@ -153,16 +151,7 @@ where
         bundle_sender: Arc<BundleSender>,
         keystore: KeystorePtr,
         transaction_pool: Arc<TransactionPool>,
-        bundle_pool: Option<
-            Arc<
-                dyn CompactBundlePool<
-                    TransactionPool,
-                    NumberFor<PBlock>,
-                    PBlock::Hash,
-                    Block::Hash,
-                >,
-            >,
-        >,
+        bundle_pool: Option<Arc<dyn CompactBundlePool<Block, PBlock, TransactionPool>>>,
     ) -> Self {
         let bundle_election_solver = BundleElectionSolver::<SBlock, PBlock, SClient>::new(
             system_domain_client.clone(),

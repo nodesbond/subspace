@@ -28,7 +28,7 @@ where
     gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
     bundle_receiver: BundleReceiver,
-    bundle_sync: Option<Arc<BundleSync<Pool, PBlock, Block>>>,
+    bundle_sync: Option<Arc<BundleSync<Block, PBlock, Pool>>>,
     pending_downloads: FuturesUnordered<
         Pin<Box<DownloadFuture<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>>,
     >,
@@ -39,22 +39,15 @@ where
     PBlock: BlockT,
     Block: BlockT,
     Executor: GossipMessageHandler<PBlock, Block>,
-    Pool: TransactionPool + 'static,
+    Pool: TransactionPool<Block = Block> + 'static,
 {
     pub(super) fn new(
         gossip_validator: Arc<GossipValidator<PBlock, Block, Executor>>,
         gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
         bundle_receiver: BundleReceiver,
         bundle_sync: Option<(
-            Arc<dyn CompactBundlePool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-            Arc<
-                dyn BundleDownloader<
-                    Block::Extrinsic,
-                    NumberFor<PBlock>,
-                    PBlock::Hash,
-                    Block::Hash,
-                >,
-            >,
+            Arc<dyn CompactBundlePool<Block, PBlock, Pool>>,
+            Arc<dyn BundleDownloader<Block, PBlock, Pool>>,
         )>,
     ) -> Self {
         let ret = Self {

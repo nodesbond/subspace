@@ -459,7 +459,7 @@ where
         system_domain_client.clone(),
         &provider,
     )?;
-    let bundle_relay_components: Option<BundleRelayComponents<_, Block::Extrinsic, _, _, _>> =
+    let bundle_relay_components: Option<BundleRelayComponents<_, _, _>> =
         if let Some(relay_config) = &core_domain_config.bundle_relay_config {
             core_domain_config
                 .service_config

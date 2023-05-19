@@ -17,6 +17,7 @@ use sc_service::config::{IncomingRequest, RequestResponseConfig};
 use sc_service::{Configuration as ServiceConfiguration, TFullClient};
 use sc_subspace_block_relay::{build_execution_relay, NetworkWrapper};
 use sc_transaction_pool_api::TransactionPool;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -63,32 +64,33 @@ impl BundleRelayConfig {
 }
 
 /// The components for bundle relay
-pub struct BundleRelayComponents<Pool: TransactionPool, Extrinsic, Number, Hash, DomainHash> {
+pub struct BundleRelayComponents<Block, PBlock, Pool>
+where
+    Block: BlockT,
+    PBlock: BlockT,
+    Pool: TransactionPool<Block = Block>,
+{
     /// The transaction pool
     pub transaction_pool: Arc<Pool>,
 
     /// The compact bundle pool
-    pub bundle_pool: Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
+    pub bundle_pool: Arc<dyn CompactBundlePool<Block, PBlock, Pool>>,
 
     /// The bundle download client
-    pub download_client: Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>,
+    pub download_client: Arc<dyn BundleDownloader<Block, PBlock, Pool>>,
 
     /// The bundle server
     pub download_server: Box<dyn BundleServer>,
 
     /// The network wrapper for the client
     pub network_wrapper: Arc<NetworkWrapper>,
-
-    _p: std::marker::PhantomData<(Extrinsic, Number, Hash, DomainHash)>,
 }
 
-impl<Pool, Extrinsic, Number, Hash, DomainHash>
-    BundleRelayComponents<Pool, Extrinsic, Number, Hash, DomainHash>
+impl<Block, PBlock, Pool> BundleRelayComponents<Block, PBlock, Pool>
 where
-    Pool: TransactionPool + 'static,
-    Number: Send + Sync + 'static,
-    Hash: Send + Sync + 'static,
-    DomainHash: Send + Sync + 'static,
+    Block: BlockT + 'static,
+    PBlock: BlockT + 'static,
+    Pool: TransactionPool<Block = Block> + 'static,
 {
     pub fn new(transaction_pool: Arc<Pool>, config: &BundleRelayConfig) -> Self {
         let bundle_pool = build_bundle_pool();
@@ -106,7 +108,6 @@ where
             download_client,
             download_server,
             network_wrapper,
-            _p: Default::default(),
         }
     }
 }

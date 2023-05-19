@@ -6,30 +6,30 @@ use sc_network::types::ProtocolName;
 use sc_network::PeerId;
 use sc_transaction_pool_api::TransactionPool;
 use sp_domains::{SignedBundle, SignedBundleHash};
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 
-struct ExecutionRelayClient<Pool, Number, Hash, DomainHash> {
+struct ExecutionRelayClient<Block, PBlock, Pool> {
     network: Arc<NetworkWrapper>,
     protocol_name: ProtocolName,
     transaction_pool: Arc<Pool>,
-    bundle_pool: Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
+    bundle_pool: Arc<dyn CompactBundlePool<Block, PBlock, Pool>>,
 }
 
 #[async_trait::async_trait]
-impl<Pool, Extrinsic, Number, Hash, DomainHash>
-    BundleDownloader<Extrinsic, Number, Hash, DomainHash>
-    for ExecutionRelayClient<Pool, Number, Hash, DomainHash>
+impl<Block, PBlock, Pool> BundleDownloader<Block, PBlock, Pool>
+    for ExecutionRelayClient<Block, PBlock, Pool>
 where
-    Pool: TransactionPool,
-    Number: Send + Sync,
-    Hash: Send + Sync,
-    DomainHash: Send + Sync,
+    Block: BlockT,
+    PBlock: BlockT,
+    Pool: TransactionPool<Block = Block>,
 {
     async fn download_bundle(
         &self,
         _who: PeerId,
         _hash: SignedBundleHash,
-    ) -> Result<SignedBundle<Extrinsic, Number, Hash, DomainHash>, String> {
+    ) -> Result<SignedBundle<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>, String>
+    {
         todo!()
     }
 }
@@ -43,20 +43,19 @@ impl BundleServer for ExecutionRelayServer {
     }
 }
 
-pub fn build_execution_relay<Pool, Extrinsic, Number, Hash, DomainHash>(
+pub fn build_execution_relay<Block, PBlock, Pool>(
     network: Arc<NetworkWrapper>,
     protocol_name: ProtocolName,
     transaction_pool: Arc<Pool>,
-    bundle_pool: Arc<dyn CompactBundlePool<Pool, Number, Hash, DomainHash>>,
+    bundle_pool: Arc<dyn CompactBundlePool<Block, PBlock, Pool>>,
 ) -> (
-    Arc<dyn BundleDownloader<Extrinsic, Number, Hash, DomainHash>>,
+    Arc<dyn BundleDownloader<Block, PBlock, Pool>>,
     Box<dyn BundleServer>,
 )
 where
-    Pool: TransactionPool + 'static,
-    Number: Send + Sync + 'static,
-    Hash: Send + Sync + 'static,
-    DomainHash: Send + Sync + 'static,
+    Block: BlockT + 'static,
+    PBlock: BlockT + 'static,
+    Pool: TransactionPool<Block = Block> + 'static,
 {
     let client = Arc::new(ExecutionRelayClient {
         network,

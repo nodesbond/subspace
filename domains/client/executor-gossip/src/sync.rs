@@ -9,24 +9,21 @@ use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::collections::HashSet;
 use std::sync::Arc;
 
-pub(crate) struct BundleSync<Pool, PBlock: BlockT, Block: BlockT> {
-    bundle_pool: Arc<dyn CompactBundlePool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-    bundle_downloader:
-        Arc<dyn BundleDownloader<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
+pub(crate) struct BundleSync<Block, PBlock, Pool> {
+    bundle_pool: Arc<dyn CompactBundlePool<Block, PBlock, Pool>>,
+    bundle_downloader: Arc<dyn BundleDownloader<Block, PBlock, Pool>>,
     in_progress: Mutex<HashSet<SignedBundleHash>>,
 }
 
-impl<Pool, PBlock, Block> BundleSync<Pool, PBlock, Block>
+impl<Block, PBlock, Pool> BundleSync<Block, PBlock, Pool>
 where
-    Pool: TransactionPool,
-    PBlock: BlockT,
     Block: BlockT,
+    PBlock: BlockT,
+    Pool: TransactionPool<Block = Block>,
 {
     pub(crate) fn new(
-        bundle_pool: Arc<dyn CompactBundlePool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>,
-        bundle_downloader: Arc<
-            dyn BundleDownloader<Block::Extrinsic, NumberFor<PBlock>, PBlock::Hash, Block::Hash>,
-        >,
+        bundle_pool: Arc<dyn CompactBundlePool<Block, PBlock, Pool>>,
+        bundle_downloader: Arc<dyn BundleDownloader<Block, PBlock, Pool>>,
     ) -> Self {
         Self {
             bundle_pool,

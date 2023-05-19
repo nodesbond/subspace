@@ -127,16 +127,7 @@ where
             NSNS,
             BI,
         >,
-        bundle_pool: Option<
-            Arc<
-                dyn CompactBundlePool<
-                    TransactionPool,
-                    NumberFor<PBlock>,
-                    PBlock::Hash,
-                    Block::Hash,
-                >,
-            >,
-        >,
+        bundle_pool: Option<Arc<dyn CompactBundlePool<Block, PBlock, TransactionPool>>>,
     ) -> Result<Self, sp_consensus::Error>
     where
         SC: SelectChain<PBlock>,
