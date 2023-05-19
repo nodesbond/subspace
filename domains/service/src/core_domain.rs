@@ -2,7 +2,6 @@ use crate::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{BundleRelayComponents, DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
-use domain_bundles::{CompactBundlePool, CompactBundlePoolImpl};
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_executor::{
     CoreDomainParentChain, CoreExecutor, CoreGossipMessageValidator, EssentialExecutorParams,

@@ -1,3 +1,4 @@
+mod sync;
 mod worker;
 
 use self::worker::GossipWorker;
@@ -11,6 +12,7 @@ use sc_network_gossip::{
     GossipEngine, MessageIntent, Network as GossipNetwork, Syncing as GossipSyncing,
     ValidationResult, Validator, ValidatorContext,
 };
+use sc_transaction_pool_api::TransactionPool;
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use sp_core::hashing::twox_64;
 use sp_domains::{SignedBundle, SignedBundleHash};
@@ -302,6 +304,11 @@ pub async fn start_gossip_worker<
     Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
     Executor: GossipMessageHandler<PBlock, Block> + Send + Sync + 'static,
     GossipSync: GossipSyncing<Block> + 'static,
+    Pool: TransactionPool + 'static,
+    Extrinsic: Send + Sync + 'static,
+    Number: Send + Sync + 'static,
+    Hash: Send + Sync + 'static,
+    DomainHash: Send + Sync + 'static,
 {
     let ExecutorGossipParams {
         network,
@@ -324,6 +331,7 @@ pub async fn start_gossip_worker<
         gossip_validator,
         Arc::new(Mutex::new(gossip_engine)),
         bundle_receiver,
+        bundle_sync,
     );
 
     gossip_worker.run().await

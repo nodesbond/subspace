@@ -2,8 +2,7 @@
 
 use crate::CompactSignedBundleForPool;
 use sc_transaction_pool_api::TransactionPool;
-use sp_core::H256;
-use sp_domains::{CompactSignedBundle, SignedBundleHash};
+use sp_domains::SignedBundleHash;
 
 /// Pool of compact signed bundles.
 pub trait CompactBundlePool<Pool, Number, Hash, DomainHash>: Send + Sync
@@ -26,6 +25,9 @@ where
         &self,
         hash: &SignedBundleHash,
     ) -> Option<CompactSignedBundleForPool<Pool, Number, Hash, DomainHash>>;
+
+    /// Checks if the bundle is in the pool.
+    fn contains(&self, hash: &SignedBundleHash) -> bool;
 }
 
 /// Compact bundle pool implementation.
@@ -56,17 +58,20 @@ where
 {
     fn add(
         &self,
-        hash: SignedBundleHash,
-        bundle: CompactSignedBundleForPool<Pool, Number, Hash, DomainHash>,
+        _hash: SignedBundleHash,
+        _bundle: CompactSignedBundleForPool<Pool, Number, Hash, DomainHash>,
     ) {
         todo!()
     }
 
-    /// Looks up the signed bundle for the given bundle hash.
     fn get(
         &self,
-        hash: &SignedBundleHash,
+        _hash: &SignedBundleHash,
     ) -> Option<CompactSignedBundleForPool<Pool, Number, Hash, DomainHash>> {
+        todo!()
+    }
+
+    fn contains(&self, _hash: &SignedBundleHash) -> bool {
         todo!()
     }
 }

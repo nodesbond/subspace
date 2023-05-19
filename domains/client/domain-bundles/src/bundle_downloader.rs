@@ -1,7 +1,6 @@
 //! Bundle download related defines.
 
 use sc_network::PeerId;
-use sp_core::H256;
 use sp_domains::{SignedBundle, SignedBundleHash};
 
 /// The serving side of the bundle server. It runs a single instance
@@ -20,6 +19,6 @@ pub trait BundleDownloader<Extrinsic, Number, Hash, DomainHash>: Send + Sync {
     async fn download_bundle(
         &self,
         who: PeerId,
-        hash: &SignedBundleHash,
+        hash: SignedBundleHash,
     ) -> Result<SignedBundle<Extrinsic, Number, Hash, DomainHash>, String>;
 }

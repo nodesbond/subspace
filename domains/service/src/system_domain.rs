@@ -1,7 +1,6 @@
 use crate::system_domain_tx_pre_validator::SystemDomainTxPreValidator;
 use crate::{BundleRelayComponents, DomainConfiguration, FullBackend, FullClient};
 use cross_domain_message_gossip::{DomainTxPoolSink, Message as GossipMessage};
-use domain_bundles::{CompactBundlePool, CompactBundlePoolImpl};
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_executor::{
     EssentialExecutorParams, ExecutorStreams, SystemDomainParentChain, SystemExecutor,

@@ -28,7 +28,7 @@ where
     async fn download_bundle(
         &self,
         _who: PeerId,
-        _hash: &SignedBundleHash,
+        _hash: SignedBundleHash,
     ) -> Result<SignedBundle<Extrinsic, Number, Hash, DomainHash>, String> {
         todo!()
     }
