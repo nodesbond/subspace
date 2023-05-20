@@ -11,9 +11,9 @@ pub use self::core_domain::{new_full_core, CoreDomainExecutor, CoreDomainParams,
 pub use self::core_domain_tx_pre_validator::CoreDomainTxPreValidator;
 pub use self::system_domain::{new_full_system, FullPool, NewFullSystem};
 use domain_bundles::{build_bundle_pool, BundleDownloader, BundleServer, CompactBundlePool};
-use futures::channel::mpsc::{self, Receiver};
+use futures::channel::mpsc;
 use sc_executor::NativeElseWasmExecutor;
-use sc_service::config::{IncomingRequest, RequestResponseConfig};
+use sc_service::config::RequestResponseConfig;
 use sc_service::{Configuration as ServiceConfiguration, TFullClient};
 use sc_subspace_block_relay::{build_execution_relay, NetworkWrapper};
 use sc_transaction_pool_api::TransactionPool;
@@ -59,9 +59,6 @@ where
 
     /// Request/response protocol for network config
     pub request_response_protocol: RequestResponseConfig,
-
-    /// Receiver for the incoming requests
-    pub request_receiver: Receiver<IncomingRequest>,
 }
 
 impl<Block, PBlock, Pool> BundleRelayComponents<Block, PBlock, Pool>
@@ -90,6 +87,7 @@ where
         let (download_client, download_server) = build_execution_relay(
             network_wrapper.clone(),
             request_response_protocol.name.clone(),
+            request_receiver,
             transaction_pool.clone(),
             bundle_pool.clone(),
         );
@@ -101,7 +99,6 @@ where
             download_server,
             network_wrapper,
             request_response_protocol,
-            request_receiver,
         }
     }
 }
