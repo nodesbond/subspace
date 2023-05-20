@@ -633,6 +633,17 @@ where
                 .map(|c| (c.bundle_pool.clone(), c.download_client.clone())),
         });
     spawn_essential.spawn_essential_blocking("core-domain-gossip", None, Box::pin(executor_gossip));
+    spawn_essential.spawn_essential_blocking(
+        "core-domain-bundle-server",
+        None,
+        Box::pin(async move {
+            let mut server = match bundle_relay_components {
+                Some(c) => c.download_server(),
+                _ => return,
+            };
+            server.run().await;
+        }),
+    );
 
     if let Some(relayer_id) = core_domain_config.maybe_relayer_id {
         tracing::info!(

@@ -101,4 +101,8 @@ where
             request_response_protocol,
         }
     }
+
+    pub fn download_server(self) -> Box<dyn BundleServer> {
+        self.download_server
+    }
 }
