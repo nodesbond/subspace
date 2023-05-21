@@ -535,11 +535,10 @@ where
         "system-domain-bundle-server",
         None,
         Box::pin(async move {
-            let mut server = match bundle_relay_components {
-                Some(c) => c.download_server(),
-                _ => return,
+            match bundle_relay_components {
+                Some(c) => c.download_server().run().await,
+                _ => std::future::pending().await, // FIXME: ...
             };
-            server.run().await;
         }),
     );
 
