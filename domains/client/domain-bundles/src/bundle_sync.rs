@@ -94,6 +94,7 @@ where
 
     /// Handles the bundle announcement received from the network
     fn on_announcement(&mut self, sender: PeerId, bundle_hash: SignedBundleHash) {
+        tracing::info!("xxx: bundle sync announcement: {sender:?}, {bundle_hash:?}");
         if self.bundle_pool.contains(&bundle_hash) {
             return;
         }
@@ -125,12 +126,17 @@ where
             Block::Hash,
         >,
     ) {
+        tracing::info!(
+            "xxx: bundle sync download completion: {:?}, err = {}",
+            download_status.bundle_hash,
+            download_status.result.is_err()
+        );
         self.in_progress.lock().remove(&download_status.bundle_hash);
         let bundle = match download_status.result {
             Ok(bundle) => bundle,
             Err(err) => {
                 warn!(
-                    "bundle download failed: {err:?}, {:?}",
+                    "xxx: bundle download failed: {err:?}, {:?}",
                     download_status.bundle_hash
                 );
                 return;
@@ -140,6 +146,10 @@ where
         let ret = self.executor.on_bundle(&bundle);
         match ret {
             Ok(Action::RebroadcastBundle) => {
+                tracing::info!(
+                    "xxx: bundle sync download completion: {:?}, rebroadcasting",
+                    download_status.bundle_hash
+                );
                 // Update the pool, announce to peers.
                 self.bundle_pool.add(&bundle);
 
@@ -148,12 +158,12 @@ where
                     payload: download_status.bundle_hash.into(),
                 };
                 if let Err(err) = self.send_bundle_announcements.unbounded_send(msg) {
-                    warn!("bundle download: error announcing downloaded bundle: {err:?}",);
+                    warn!("xxx: bundle download: error announcing downloaded bundle: {err:?}");
                 }
             }
             _ => {
                 warn!(
-                    "bundle download:validation failed {:?}, {:?}",
+                    "xxx: bundle sync download:validation failed {:?}, {:?}",
                     ret, download_status.bundle_hash
                 );
             }

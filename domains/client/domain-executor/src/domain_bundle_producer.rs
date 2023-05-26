@@ -255,12 +255,15 @@ where
                 // Add the compact bundle to the pool and advertise the bundle hash
                 // if relay is enabled
                 bundle_pool.add(&signed_bundle);
+                let hash = signed_bundle.hash();
                 let msg = GossipMessage {
                     domain_id: self.domain_id,
-                    payload: signed_bundle.hash().into(),
+                    payload: hash.into(),
                 };
                 if let Err(e) = self.gossip_message_sink.unbounded_send(msg) {
                     tracing::error!(error = ?e, "produce_bundle: failed to send transaction bundle");
+                } else {
+                    tracing::info!("xxx: produce_bundle: sent announcement {hash:?}");
                 }
             }
 

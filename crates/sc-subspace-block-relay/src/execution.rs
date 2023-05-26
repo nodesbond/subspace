@@ -126,7 +126,7 @@ where
         // Try to resolve the bundles locally first
         let context = self.resolve_local(extrinsics_hash)?;
         if context.resolved.len() == extrinsics_hash.len() {
-            trace!(
+            info!(
                 target: LOG_TARGET,
                 "relay::bundle::resolve: {:?}: resolved locally[{}]",
                 bundle_hash,
@@ -146,7 +146,7 @@ where
         let misses = context.local_miss.len();
         let resolved = self.resolve_misses(context, network_peer_handle).await?;
 
-        trace!(
+        info!(
             target: LOG_TARGET,
             "relay::bundle::resolve: {:?}: resolved by server[{},{}]",
             bundle_hash,
@@ -334,6 +334,16 @@ where
                 InitialResponse {
                     compact_signed_bundle,
                 };
+            info!(
+                target: LOG_TARGET,
+                "relay::bundle server: initial request: {:?}, {}",
+                request.hash,
+                response
+                    .compact_signed_bundle
+                    .compact_bundle
+                    .extrinsics_hash
+                    .len()
+            );
             Ok(response.encode())
         } else {
             Err(RelayError::CompactBlockNotFound(request.hash))

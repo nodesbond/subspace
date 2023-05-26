@@ -75,12 +75,14 @@ where
         // TODO: proper timeout
         let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
 
+        let mut pending_iterator_type = true;
         let pending_iterator = select! {
             res = t1 => res,
             _ = t2 => {
                 tracing::warn!(
                     "Timeout fired waiting for transaction pool at #{parent_number}, proceeding with production."
                 );
+                pending_iterator_type = false;
                 self.transaction_pool.ready()
             }
         };
@@ -97,13 +99,20 @@ where
         // - maximize the executor computation power.
         let mut extrinsics = Vec::new();
 
+        let mut total = 0;
         for pending_tx in pending_iterator {
-            if start.elapsed() >= pushing_duration {
-                break;
+            total += 1;
+            if start.elapsed() < pushing_duration {
+                let pending_tx_data = pending_tx.data().clone();
+                extrinsics.push(pending_tx_data);
             }
-            let pending_tx_data = pending_tx.data().clone();
-            extrinsics.push(pending_tx_data);
         }
+        tracing::info!(
+            "xxx: propose_bundle_at(): {}/{}/{}",
+            pending_iterator_type,
+            extrinsics.len(),
+            total,
+        );
 
         let extrinsics_root = BlakeTwo256::ordered_trie_root(
             extrinsics.iter().map(|xt| xt.encode()).collect(),

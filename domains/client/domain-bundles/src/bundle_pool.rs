@@ -8,6 +8,7 @@ use sp_domains::{SignedBundle, SignedBundleHash};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use tracing::info;
 
 const COMPACT_BUNDLE_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(512).expect("Not zero; qed");
 
@@ -95,6 +96,11 @@ where
             self.transaction_pool.as_ref(),
             signed_bundle,
         );
+        info!(
+            "xxx: CompactBundlePool:add(): {hash:?}, {}/{}",
+            signed_bundle.bundle.extrinsics.len(),
+            compact_bundle.compact_bundle.extrinsics_hash.len(),
+        );
         self.compact_bundle_cache.lock().put(hash, compact_bundle);
     }
 
@@ -103,7 +109,16 @@ where
         hash: &SignedBundleHash,
     ) -> Option<CompactSignedBundleForPool<Pool, NumberFor<PBlock>, PBlock::Hash, Block::Hash>>
     {
-        self.compact_bundle_cache.lock().get(hash).cloned()
+        let ret = self.compact_bundle_cache.lock().get(hash).cloned();
+        if let Some(compact_bundle) = &ret {
+            info!(
+                "xxx: CompactBundlePool:get(): {hash:?}, {}",
+                compact_bundle.compact_bundle.extrinsics_hash.len(),
+            );
+        } else {
+            info!("xxx: CompactBundlePool:get(): {hash:?} not found");
+        }
+        ret
     }
 
     fn contains(&self, hash: &SignedBundleHash) -> bool {

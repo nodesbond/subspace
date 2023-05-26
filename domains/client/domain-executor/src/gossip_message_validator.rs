@@ -288,9 +288,11 @@ where
                         .map_err(|_| GossipMessageError::SendError)
                 }
                 Ok(None) => {
-                    unimplemented!(
+                    //unimplemented!(
+                    tracing::warn!(
                         "TODO: rework the following logic once the compact bundle is a thing"
-                    )
+                    );
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
                     /*
                     // TODO: test how this works under the primary forks.

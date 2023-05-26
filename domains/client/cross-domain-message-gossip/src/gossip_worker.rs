@@ -49,6 +49,7 @@ impl From<SignedBundleHash> for MessagePayload {
     }
 }
 
+#[derive(Debug)]
 pub enum MessageSource {
     Local,
     Network(Option<PeerId>),
@@ -251,6 +252,10 @@ impl<Block: BlockT> GossipWorker<Block> {
         bundle_hash: SignedBundleHash,
         source: MessageSource,
     ) {
+        tracing::info!(
+            target: LOG_TARGET,
+            "xxx: cdm gossip received: {domain_id:?}, {source:?}, {bundle_hash:?}"
+        );
         match source {
             MessageSource::Network(Some(sender)) => {
                 // Received announcement from network, forward it to the local announcement
