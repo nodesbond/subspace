@@ -24,10 +24,12 @@ mod benchmarking;
 #[cfg(test)]
 mod tests;
 
+pub mod block_tree;
 pub mod domain_registry;
 pub mod runtime_registry;
 pub mod weights;
 
+use crate::block_tree::verify_execution_receipt;
 use frame_support::traits::{Currency, Get};
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
@@ -35,7 +37,7 @@ use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainId, OpaqueBundle};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Zero};
-use sp_runtime::transaction_validity::TransactionValidityError;
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
 
@@ -43,8 +45,28 @@ use subspace_core_primitives::U256;
 pub type BalanceOf<T> =
     <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
+pub type ExecutionReceiptOf<T> = sp_domains::v2::ExecutionReceipt<
+    <T as frame_system::Config>::BlockNumber,
+    <T as frame_system::Config>::Hash,
+    <T as Config>::DomainNumber,
+    <T as Config>::DomainHash,
+    BalanceOf<T>,
+>;
+
+pub type OpaqueBundleOf<T> = sp_domains::v2::OpaqueBundle<
+    <T as frame_system::Config>::BlockNumber,
+    <T as frame_system::Config>::Hash,
+    <T as Config>::DomainNumber,
+    <T as Config>::DomainHash,
+    BalanceOf<T>,
+>;
+
 #[frame_support::pallet]
 mod pallet {
+    use crate::block_tree::{
+        execution_receipt_type, process_execution_receipt, DomainBlock, Error as BlockTreeError,
+        ReceiptType,
+    };
     use crate::domain_registry::{
         do_instantiate_domain, DomainConfig, DomainObject, Error as DomainRegistryError,
     };
@@ -54,11 +76,11 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::weights::WeightInfo;
-    use crate::{calculate_tx_range, BalanceOf};
+    use crate::{calculate_tx_range, BalanceOf, OpaqueBundleOf};
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::LockableCurrency;
     use frame_support::weights::Weight;
-    use frame_support::{Identity, PalletError};
+    use frame_support::{BoundedBTreeSet, Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
@@ -67,8 +89,8 @@ mod pallet {
         DomainId, GenesisDomain, OpaqueBundle, OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{
-        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, MaybeDisplay, SimpleBitOps,
-        Zero,
+        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
+        One, SimpleBitOps, Zero,
     };
     use sp_std::fmt::Debug;
     use sp_std::vec::Vec;
@@ -108,7 +130,8 @@ mod pallet {
             + AsRef<[u8]>
             + AsMut<[u8]>
             + MaxEncodedLen
-            + Into<H256>;
+            + Into<H256>
+            + From<H256>;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         type ConfirmationDepthK: Get<Self::BlockNumber>;
@@ -195,13 +218,51 @@ mod pallet {
 
     /// The domain registry
     #[pallet::storage]
-    pub(super) type DomainRegistry<T: Config> = StorageMap<
+    pub(super) type DomainRegistry<T: Config> =
+        StorageMap<_, Identity, DomainId, DomainObject<T::BlockNumber, T::AccountId>, OptionQuery>;
+
+    /// The domain block tree, map (`domain_id`, `domain_block_number`) to the hash of a domain blocks,
+    /// which can be used get the domain block in `DomainBlocks`
+    #[pallet::storage]
+    pub(super) type BlockTree<T: Config> = StorageDoubleMap<
         _,
         Identity,
         DomainId,
-        DomainObject<T::BlockNumber, T::Hash, T::AccountId>,
+        Identity,
+        T::DomainNumber,
+        BoundedBTreeSet<H256, T::MaxBlockTreeFork>,
+        ValueQuery,
+    >;
+
+    /// Mapping of domain block hash to domain block
+    #[pallet::storage]
+    pub(super) type DomainBlocks<T: Config> = StorageMap<
+        _,
+        Identity,
+        H256,
+        DomainBlock<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>,
         OptionQuery,
     >;
+
+    /// The head receipt number of each domain
+    #[pallet::storage]
+    pub(super) type HeadReceiptNumber<T: Config> =
+        StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
+
+    /// A set of `bundle_extrinsics_root` from all bundles that successfully submitted to the consensus
+    /// block, these extrinsics will be used to construct the domain block and `ExecutionInbox` is used
+    /// to ensure subsequent ERs of that domain block include all pre-validated extrinsic bundles.
+    #[pallet::storage]
+    pub(super) type ExecutionInbox<T: Config> =
+        StorageDoubleMap<_, Identity, DomainId, Identity, T::DomainNumber, Vec<H256>, ValueQuery>;
+
+    /// The block number of the best domain block, increase by one when the first bundle of the domain is
+    /// successfully submitted to current consensus block, which mean a new domain block with this block
+    /// number will be produce. Used as a pointer in `ExecutionInbox` to identify the current under building
+    /// domain block, also used as a mapping of consensus block number to domain block number.
+    #[pallet::storage]
+    pub(super) type HeadDomainNumber<T: Config> =
+        StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -220,34 +281,11 @@ mod pallet {
         /// Invalid system bundle election solution.
         BadElectionSolution,
         /// An invalid execution receipt found in the bundle.
-        Receipt(ExecutionReceiptError),
+        Receipt(BlockTreeError),
         /// The Bundle is created too long ago.
         StaleBundle,
         /// Bundle was created on an unknown primary block (probably a fork block).
         UnknownBlock,
-    }
-
-    impl<T> From<BundleError> for Error<T> {
-        #[inline]
-        fn from(e: BundleError) -> Self {
-            Self::Bundle(e)
-        }
-    }
-
-    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
-    pub enum ExecutionReceiptError {
-        /// The parent execution receipt is unknown.
-        MissingParent,
-        /// The execution receipt has been pruned.
-        Pruned,
-        /// The execution receipt points to a block unknown to the history.
-        UnknownBlock,
-        /// The execution receipt is too far in the future.
-        TooFarInFuture,
-        /// Receipts are not consecutive.
-        Inconsecutive,
-        /// Receipts in a bundle can not be empty.
-        Empty,
     }
 
     impl<T> From<RuntimeRegistryError> for Error<T> {
@@ -262,16 +300,24 @@ mod pallet {
         }
     }
 
+    impl<T> From<BlockTreeError> for Error<T> {
+        fn from(err: BlockTreeError) -> Self {
+            Error::BlockTree(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
-        /// Invalid bundle.
-        Bundle(BundleError),
+        /// Can not find the block hash of given primary block number.
+        UnavailablePrimaryBlockHash,
         /// Invalid fraud proof.
         FraudProof,
         /// Runtime registry specific errors
         RuntimeRegistry(RuntimeRegistryError),
         /// Domain registry specific errors
         DomainRegistry(DomainRegistryError),
+        /// Block tree specific errors
+        BlockTree(BlockTreeError),
     }
 
     #[pallet::event]
@@ -348,6 +394,7 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         // TODO: proper weight
+        // TODO: replace it with `submit_bundle_v2` after all usage of it is removed
         #[allow(deprecated)]
         #[pallet::call_index(0)]
         #[pallet::weight(Weight::from_all(10_000))]
@@ -373,6 +420,62 @@ mod pallet {
                 domain_id,
                 bundle_hash,
                 bundle_author: opaque_bundle.into_operator_public_key(),
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(5)]
+        #[pallet::weight(Weight::from_all(10_000))]
+        // TODO: proper benchmark
+        pub fn submit_bundle_v2(
+            origin: OriginFor<T>,
+            opaque_bundle: OpaqueBundleOf<T>,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+
+            log::trace!(target: "runtime::domains", "Processing bundle: {opaque_bundle:?}");
+
+            let domain_id = opaque_bundle.domain_id();
+            let bundle_hash = opaque_bundle.hash();
+            let extrinsics_root = opaque_bundle.extrinsics_root();
+            let operator_id = opaque_bundle.operator_id();
+            let (bundle_author, receipt) = opaque_bundle.deconstruct();
+
+            let receipt_type = execution_receipt_type::<T>(domain_id, &receipt);
+            if receipt_type == ReceiptType::Stale {
+                // The stale receipt should not be further processed, but we still track them for purposes
+                // of measuring the bundle production rate.
+                Self::note_domain_bundle(domain_id);
+                return Ok(());
+            }
+
+            // Add the exeuctione receipt to the block tree
+            process_execution_receipt::<T>(domain_id, operator_id, receipt, receipt_type)
+                .map_err(Error::<T>::from)?;
+
+            // `SuccessfulBundles` is empty means this is the first accepted bundle for this domain in this
+            // consensus block, which also mean a domain block will be produced thus update `HeadDomainNumber`
+            // to this domain block's block number.
+            if SuccessfulBundles::<T>::get(domain_id).is_empty() {
+                let next_number = HeadDomainNumber::<T>::get(domain_id)
+                    .checked_add(&One::one())
+                    .ok_or::<Error<T>>(BlockTreeError::MaxHeadDomainNumber.into())?;
+                HeadDomainNumber::<T>::set(domain_id, next_number);
+            }
+
+            // Put the `extrinsics_root` to the inbox of the current under building domain block
+            let head_domain_number = HeadDomainNumber::<T>::get(domain_id);
+            ExecutionInbox::<T>::append(domain_id, head_domain_number, extrinsics_root);
+
+            SuccessfulBundles::<T>::append(domain_id, bundle_hash);
+
+            Self::note_domain_bundle(domain_id);
+
+            Self::deposit_event(Event::BundleStored {
+                domain_id,
+                bundle_hash,
+                bundle_author,
             });
 
             Ok(())
@@ -540,7 +643,8 @@ mod pallet {
         type Call = Call<T>;
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
-                Call::submit_bundle { opaque_bundle } => {
+                Call::submit_bundle { opaque_bundle: _ } => Ok(()),
+                Call::submit_bundle_v2 { opaque_bundle } => {
                     Self::pre_dispatch_submit_bundle(opaque_bundle)
                 }
                 Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
@@ -551,6 +655,16 @@ mod pallet {
         fn validate_unsigned(_source: TransactionSource, call: &Self::Call) -> TransactionValidity {
             match call {
                 Call::submit_bundle { opaque_bundle } => {
+                    ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
+                        .priority(TransactionPriority::MAX)
+                        .longevity(T::ConfirmationDepthK::get().try_into().unwrap_or_else(|_| {
+                            panic!("Block number always fits in TransactionLongevity; qed")
+                        }))
+                        .and_provides(opaque_bundle.hash())
+                        .propagate(true)
+                        .build()
+                }
+                Call::submit_bundle_v2 { opaque_bundle } => {
                     if let Err(e) = Self::validate_bundle(opaque_bundle) {
                         log::debug!(
                             target: "runtime::domains",
@@ -612,24 +726,26 @@ impl<T: Config> Pallet<T> {
     }
 
     fn pre_dispatch_submit_bundle(
-        _opaque_bundle: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
+        opaque_bundle: &OpaqueBundleOf<T>,
     ) -> Result<(), TransactionValidityError> {
-        // TODO: Validate domain block tree
-        Ok(())
+        let domain_id = opaque_bundle.domain_id();
+        let receipt = &opaque_bundle.sealed_header.header.receipt;
+
+        // TODO: Implement bundle validation.
+
+        verify_execution_receipt::<T>(domain_id, receipt)
+            .map_err(|_| InvalidTransaction::Call.into())
     }
 
-    fn validate_bundle(
-        OpaqueBundle {
-            sealed_header,
-            receipt: _,
-            extrinsics: _,
-        }: &OpaqueBundle<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash>,
-    ) -> Result<(), BundleError> {
+    fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        let sealed_header = &opaque_bundle.sealed_header;
         if !sealed_header.verify_signature() {
             return Err(BundleError::BadSignature);
         }
 
-        let header = &sealed_header.header;
+        let domain_id = opaque_bundle.domain_id();
+        let receipt = &sealed_header.header.receipt;
+        let consensus_block_height = sealed_header.header.consensus_block_height;
 
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
 
@@ -637,24 +753,24 @@ impl<T: Config> Pallet<T> {
         let confirmation_depth_k = T::ConfirmationDepthK::get();
         if let Some(finalized) = current_block_number.checked_sub(&confirmation_depth_k) {
             {
-                // Ideally, `bundle.header.primary_number` is `current_block_number - 1`, we need
+                // Ideally, `consensus_block_height` is `current_block_number - 1`, we need
                 // to handle the edge case that `T::ConfirmationDepthK` happens to be 1.
                 let is_stale_bundle = if confirmation_depth_k.is_zero() {
                     unreachable!(
                         "ConfirmationDepthK is guaranteed to be non-zero at genesis config"
                     )
                 } else if confirmation_depth_k == One::one() {
-                    header.consensus_block_number < finalized
+                    consensus_block_height < finalized
                 } else {
-                    header.consensus_block_number <= finalized
+                    consensus_block_height <= finalized
                 };
 
                 if is_stale_bundle {
                     log::debug!(
                         target: "runtime::domains",
                         "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
-                        ConfirmationDepthK: {confirmation_depth_k:?}, `bundle.header.primary_number`: {:?}, `finalized`: {finalized:?}",
-                        header.consensus_block_number,
+                        ConfirmationDepthK: {confirmation_depth_k:?}, `consensus_block_height`: {:?}, `finalized`: {finalized:?}",
+                        consensus_block_height,
                     );
                     return Err(BundleError::StaleBundle);
                 }
@@ -662,6 +778,8 @@ impl<T: Config> Pallet<T> {
         }
 
         // TODO: Implement bundle validation.
+
+        verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
 
         Ok(())
     }
