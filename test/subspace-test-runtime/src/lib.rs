@@ -483,7 +483,6 @@ impl pallet_offences_subspace::Config for Runtime {
 }
 
 parameter_types! {
-    pub const ReceiptsPruningDepth: BlockNumber = 256;
     pub const MaximumReceiptDrift: BlockNumber = 2;
     pub const InitialDomainTxRange: u64 = 10;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
@@ -496,6 +495,8 @@ parameter_types! {
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
+    pub const BlockTreePruningDepth: u32 = 256;
+    pub const MaxBlockTreeFork: u32 = 32;
 }
 
 impl pallet_domains::Config for Runtime {
@@ -513,6 +514,8 @@ impl pallet_domains::Config for Runtime {
     type MaxBundlesPerBlock = MaxBundlesPerBlock;
     type DomainInstantiationDeposit = DomainInstantiationDeposit;
     type MaxDomainNameLength = MaxDomainNameLength;
+    type BlockTreePruningDepth = BlockTreePruningDepth;
+    type MaxBlockTreeFork = MaxBlockTreeFork;
     type Currency = Balances;
 }
 
