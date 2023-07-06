@@ -220,3 +220,285 @@ pub(crate) fn import_genesis_receipt<T: Config>(
     });
     DomainBlocks::<T>::insert(er_hash, domain_block);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain_registry::DomainConfig;
+    use crate::tests::{
+        create_dummy_bundle_with_receipts, create_dummy_receipt, new_test_ext,
+        GenesisStateRootGenerater, ReadRuntimeVersion, Test,
+    };
+    use crate::NextDomainId;
+    use frame_support::dispatch::RawOrigin;
+    use frame_support::traits::{Currency, Hooks};
+    use frame_support::weights::Weight;
+    use frame_support::{assert_err, assert_ok};
+    use frame_system::Pallet as System;
+    use sp_core::H256;
+    use sp_domains::{GenesisReceiptExtension, RuntimeType};
+    use sp_runtime::traits::BlockNumberProvider;
+    use sp_version::RuntimeVersion;
+    use std::sync::Arc;
+
+    fn run_to_block<T: Config>(block_number: T::BlockNumber, parent_hash: T::Hash) {
+        System::<T>::set_block_number(block_number);
+        System::<T>::initialize(&block_number, &parent_hash, &Default::default());
+        <crate::Pallet<T> as Hooks<T::BlockNumber>>::on_initialize(block_number);
+        System::<T>::finalize();
+    }
+
+    #[test]
+    fn test_block_tree() {
+        let creator = 1u64;
+        let operator_id = 1u64;
+        let block_tree_pruning_depth = <Test as Config>::BlockTreePruningDepth::get() as u64;
+
+        let version = RuntimeVersion {
+            spec_name: "test".into(),
+            impl_name: Default::default(),
+            authoring_version: 0,
+            spec_version: 1,
+            impl_version: 1,
+            apis: Default::default(),
+            transaction_version: 1,
+            state_version: 0,
+        };
+
+        let domain_config = DomainConfig {
+            domain_name: b"evm-domain".to_vec(),
+            runtime_id: 0,
+            max_block_size: 1u32,
+            max_block_weight: Weight::from_parts(1, 0),
+            bundle_slot_probability: (1, 1),
+            target_bundles_per_block: 1,
+        };
+
+        let mut ext = new_test_ext();
+        ext.register_extension(sp_core::traits::ReadRuntimeVersionExt::new(
+            ReadRuntimeVersion(version.encode()),
+        ));
+        ext.register_extension(GenesisReceiptExtension::new(Arc::new(
+            GenesisStateRootGenerater,
+        )));
+        ext.execute_with(|| {
+            assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
+                RawOrigin::Root.into(),
+                b"evm".to_vec(),
+                RuntimeType::Evm,
+                vec![1, 2, 3, 4],
+            ));
+
+            let domain_id = NextDomainId::<Test>::get();
+            <Test as Config>::Currency::make_free_balance_be(
+                &creator,
+                <Test as Config>::DomainInstantiationDeposit::get(),
+            );
+            assert_ok!(crate::Pallet::<Test>::instantiate_domain(
+                RawOrigin::Signed(creator).into(),
+                domain_config,
+            ));
+
+            // The genesis receipt should be added to the block tree
+            let block_tree_node_at_0 = BlockTree::<Test>::get(domain_id, 0);
+            assert_eq!(block_tree_node_at_0.len(), 1);
+
+            let genesis_node =
+                DomainBlocks::<Test>::get(block_tree_node_at_0.first().unwrap()).unwrap();
+            assert!(genesis_node.operator_ids.is_empty());
+            assert_eq!(HeadReceiptNumber::<Test>::get(domain_id), 0);
+
+            // The genesis receipt should be able pass the verification and is unchallengeable
+            let genesis_receipt = genesis_node.execution_receipt;
+            let invalid_genesis_receipt = {
+                let mut receipt = genesis_receipt.clone();
+                receipt.final_state_root = H256::random();
+                receipt
+            };
+            assert_ok!(verify_execution_receipt::<Test>(
+                domain_id,
+                &genesis_receipt
+            ));
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &invalid_genesis_receipt),
+                Error::ChallengeGenesisReceipt
+            );
+
+            let mut receipt_of_block_1 = None;
+            let mut receipt = genesis_receipt;
+            for block_number in 1..=(block_tree_pruning_depth + 3) {
+                // Run to `block_number`
+                run_to_block::<Test>(
+                    block_number,
+                    frame_system::Pallet::<Test>::block_hash(block_number - 1),
+                );
+
+                // Submit a bundle with the receipt of the last block
+                let bundle_extrinsics_root = H256::random();
+                let bundle = create_dummy_bundle_with_receipts(
+                    domain_id,
+                    block_number,
+                    operator_id,
+                    bundle_extrinsics_root,
+                    receipt,
+                );
+                assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+                    RawOrigin::None.into(),
+                    bundle,
+                ));
+                // `bundle_extrinsics_root` should be tracked in `ExecutionInbox`
+                assert_eq!(
+                    ExecutionInbox::<Test>::get(domain_id, block_number),
+                    vec![bundle_extrinsics_root]
+                );
+
+                // Head receipt number should be updated
+                let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
+                assert_eq!(head_receipt_number, block_number - 1);
+
+                // As we only extending the block tree there should be no fork
+                let parent_block_tree_nodes =
+                    BlockTree::<Test>::get(domain_id, head_receipt_number);
+                assert_eq!(parent_block_tree_nodes.len(), 1);
+
+                // The submitter is should be added to `operator_ids`
+                let parent_domain_block_receipt = parent_block_tree_nodes.first().unwrap();
+                let parent_node = DomainBlocks::<Test>::get(parent_domain_block_receipt).unwrap();
+                assert_eq!(parent_node.operator_ids.len(), 1);
+                assert_eq!(parent_node.operator_ids[0], operator_id);
+
+                // Construct a `NewHead` receipt of the just submitted bundle, which will be included in the next bundle
+                receipt = create_dummy_receipt(
+                    block_number,
+                    frame_system::Pallet::<Test>::block_hash(block_number),
+                    *parent_domain_block_receipt,
+                    vec![bundle_extrinsics_root],
+                );
+                assert_eq!(
+                    execution_receipt_type::<Test>(domain_id, &receipt),
+                    ReceiptType::NewHead
+                );
+                assert_ok!(verify_execution_receipt::<Test>(domain_id, &receipt));
+                if block_number == 1 {
+                    receipt_of_block_1.replace(receipt.clone());
+                }
+            }
+
+            let get_block_tree_node_at = |height| {
+                DomainBlocks::<Test>::get(
+                    BlockTree::<Test>::get(domain_id, height).first().unwrap(),
+                )
+                .unwrap()
+            };
+            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
+            let current_block_number = frame_system::Pallet::<Test>::current_block_number();
+
+            // The receipt of the block 1 is pruned at the last iteration, verify it will result in
+            // `InvalidExtrinsicsRoots` error as `ExecutionInbox` of block 1 is pruned
+            let pruned_receipt = receipt_of_block_1.unwrap();
+            assert!(BlockTree::<Test>::get(domain_id, 1).is_empty());
+            assert!(ExecutionInbox::<Test>::get(domain_id, 1).is_empty());
+            assert_eq!(
+                execution_receipt_type::<Test>(domain_id, &pruned_receipt),
+                ReceiptType::Pruned
+            );
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &pruned_receipt),
+                Error::InvalidExtrinsicsRoots
+            );
+
+            // Receipt that comfirm the head receipt
+            let operator_id2 = 2u64;
+            let current_head_receipt =
+                get_block_tree_node_at(head_receipt_number).execution_receipt;
+            assert_eq!(
+                execution_receipt_type::<Test>(domain_id, &current_head_receipt),
+                ReceiptType::CurrentHead
+            );
+            assert_ok!(verify_execution_receipt::<Test>(
+                domain_id,
+                &current_head_receipt
+            ));
+            let bundle = create_dummy_bundle_with_receipts(
+                domain_id,
+                current_block_number,
+                operator_id2,
+                H256::random(),
+                current_head_receipt.clone(),
+            );
+            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+                RawOrigin::None.into(),
+                bundle,
+            ));
+            let head_node = get_block_tree_node_at(head_receipt_number);
+            assert_eq!(head_node.operator_ids, vec![operator_id, operator_id2]);
+
+            // Receipt that comfirm a non-head receipt is stale receipt but can pass `verify_execution_receipt`
+            let stale_receipt = get_block_tree_node_at(head_receipt_number - 1).execution_receipt;
+            assert_eq!(
+                execution_receipt_type::<Test>(domain_id, &stale_receipt),
+                ReceiptType::Stale
+            );
+            assert_ok!(verify_execution_receipt::<Test>(domain_id, &stale_receipt));
+
+            // Receipt that fork away from an existing node of the block tree
+            let mut new_branch_receipt = current_head_receipt.clone();
+            new_branch_receipt.final_state_root = H256::random();
+            assert_eq!(
+                execution_receipt_type::<Test>(domain_id, &new_branch_receipt),
+                ReceiptType::NewBranch
+            );
+            assert_ok!(verify_execution_receipt::<Test>(
+                domain_id,
+                &new_branch_receipt
+            ));
+            let bundle = create_dummy_bundle_with_receipts(
+                domain_id,
+                current_block_number,
+                operator_id2,
+                H256::random(),
+                new_branch_receipt,
+            );
+            assert_ok!(crate::Pallet::<Test>::submit_bundle_v2(
+                RawOrigin::None.into(),
+                bundle,
+            ));
+            let block_tree_tip = BlockTree::<Test>::get(domain_id, head_receipt_number);
+            assert_eq!(block_tree_tip.len(), 2);
+
+            // In future receipt will result in `UnknownParentBlockReceipt` error as its parent
+            // receipt is missing from the block tree
+            let mut future_receipt = current_head_receipt.clone();
+            future_receipt.domain_block_height = head_receipt_number + 2;
+            ExecutionInbox::<Test>::insert(
+                domain_id,
+                head_receipt_number + 2,
+                future_receipt.block_extrinsics_roots.clone(),
+            );
+            assert_eq!(
+                execution_receipt_type::<Test>(domain_id, &future_receipt),
+                ReceiptType::InFuture
+            );
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &future_receipt),
+                Error::UnknownParentBlockReceipt
+            );
+
+            // Receipt droven from unknown consensus block
+            let mut unknown_consensus_block_receipt = current_head_receipt.clone();
+            unknown_consensus_block_receipt.consensus_block_hash = H256::random();
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &unknown_consensus_block_receipt),
+                Error::BuiltOnUnknownConsensusBlock
+            );
+
+            // Receipt with unknown parent receipt
+            let mut unknown_parent_receipt = current_head_receipt;
+            unknown_parent_receipt.parent_domain_block_receipt = H256::random();
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &unknown_parent_receipt),
+                Error::UnknownParentBlockReceipt
+            );
+        });
+    }
+}
