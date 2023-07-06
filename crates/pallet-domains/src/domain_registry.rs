@@ -1,14 +1,16 @@
 //! Domain registry for domains
 
-use crate::{Config, DomainRegistry, NextDomainId, RuntimeRegistry};
+use crate::block_tree::import_genesis_receipt;
+use crate::{Config, DomainRegistry, ExecutionReceiptOf, NextDomainId, RuntimeRegistry};
 use codec::{Decode, Encode};
 use frame_support::traits::{Currency, LockIdentifier, LockableCurrency, WithdrawReasons};
 use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
-use sp_core::Get;
-use sp_domains::{DomainId, GenesisDomain, RuntimeId};
-use sp_runtime::traits::CheckedAdd;
+use sp_core::{Get, H256};
+use sp_domains::domain::generate_genesis_state_root;
+use sp_domains::{DomainId, GenesisDomain, RuntimeId, RuntimeType};
+use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_std::vec::Vec;
 
 const DOMAIN_INSTANCE_ID: LockIdentifier = *b"domains ";
@@ -26,6 +28,7 @@ pub enum Error {
     RuntimeNotFound,
     InsufficientFund,
     DomainNameTooLong,
+    FailedToGenerateGenesisStateRoot,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -62,13 +65,13 @@ impl DomainConfig {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct DomainObject<Number, Hash, AccountId> {
+pub struct DomainObject<Number, AccountId> {
     /// The address of the domain creator, used to validate updating the domain config.
     pub owner_account_id: AccountId,
     /// The consensus chain block number when the domain first instantiated.
     pub created_at: Number,
     /// The hash of the genesis execution receipt for this domain.
-    pub genesis_receipt_hash: Hash,
+    pub genesis_receipt_hash: H256,
     /// The domain config.
     pub domain_config: DomainConfig,
 }
@@ -129,11 +132,16 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         WithdrawReasons::all(),
     );
 
+    let runtime_type = RuntimeRegistry::<T>::get(domain_config.runtime_id)
+        .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed")
+        .runtime_type;
+    let genesis_receipt = initialize_genesis_receipt::<T>(runtime_type)?;
+    let genesis_receipt_hash = genesis_receipt.hash();
+
     let domain_obj = DomainObject {
         owner_account_id,
         created_at,
-        // TODO: drive the `genesis_receipt_hash` from genesis config through host function
-        genesis_receipt_hash: T::Hash::default(),
+        genesis_receipt_hash,
         domain_config,
     };
     let domain_id = NextDomainId::<T>::get();
@@ -144,10 +152,21 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 
     // TODO: initialize the stake summary for this domain
 
-    // TODO: initialize the genesis block in the domain block tree once we can drive the
-    // genesis ER from genesis config through host function
+    import_genesis_receipt::<T>(domain_id, genesis_receipt);
 
     Ok(domain_id)
+}
+
+fn initialize_genesis_receipt<T: Config>(
+    runtime_type: RuntimeType,
+) -> Result<ExecutionReceiptOf<T>, Error> {
+    let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero());
+    let genesis_state_root =
+        generate_genesis_state_root(runtime_type).ok_or(Error::FailedToGenerateGenesisStateRoot)?;
+    Ok(ExecutionReceiptOf::<T>::genesis(
+        consensus_genesis_hash,
+        genesis_state_root.into(),
+    ))
 }
 
 #[cfg(test)]
