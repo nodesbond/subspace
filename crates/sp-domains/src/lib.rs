@@ -538,11 +538,7 @@ impl DomainsDigestItem for DigestItem {
 #[cfg(feature = "std")]
 pub trait GenerateGenesisStateRoot: Send + Sync {
     /// Returns the state root of genesis block built from the runtime genesis config on success.
-    fn generate_genesis_state_root(
-        &self,
-        runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
-    ) -> Option<H256>;
+    fn generate_genesis_state_root(&self, runtime_type: RuntimeType) -> Option<H256>;
 }
 
 #[cfg(feature = "std")]
@@ -562,16 +558,12 @@ impl GenesisReceiptExtension {
 /// Domain-related runtime interface
 #[runtime_interface]
 pub trait Domain {
-    fn generate_genesis_state_root(
-        &mut self,
-        runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
-    ) -> Option<H256> {
+    fn generate_genesis_state_root(&mut self, runtime_type: RuntimeType) -> Option<H256> {
         use sp_externalities::ExternalitiesExt;
 
         self.extension::<GenesisReceiptExtension>()
             .expect("No `GenesisReceiptExtension` associated for the current context!")
-            .generate_genesis_state_root(runtime_type, raw_runtime_genesis_config)
+            .generate_genesis_state_root(runtime_type)
     }
 }
 

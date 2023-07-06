@@ -83,21 +83,14 @@ where
     pub fn generate_genesis_block(
         &self,
         runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
     ) -> sp_blockchain::Result<Block> {
         let domain_genesis_block_builder = match runtime_type {
-            RuntimeType::Evm => {
-                let runtime_genesis_config: evm_domain_runtime::RuntimeGenesisConfig =
-                    serde_json::from_slice(&raw_runtime_genesis_config)
-                        .map_err(|err| sp_blockchain::Error::Application(Box::new(err)))?;
-
-                GenesisBlockBuilder::new(
-                    &runtime_genesis_config,
-                    false,
-                    self.backend.clone(),
-                    self.executor.clone(),
-                )?
-            }
+            RuntimeType::Evm => GenesisBlockBuilder::new(
+                &evm_domain_runtime::RuntimeGenesisConfig::default(),
+                false,
+                self.backend.clone(),
+                self.executor.clone(),
+            )?,
         };
         domain_genesis_block_builder
             .build_genesis_block()
@@ -112,12 +105,8 @@ where
     B: Backend<Block>,
     E: RuntimeVersionOf + Clone + Send + Sync,
 {
-    fn generate_genesis_state_root(
-        &self,
-        runtime_type: RuntimeType,
-        raw_runtime_genesis_config: Vec<u8>,
-    ) -> Option<H256> {
-        self.generate_genesis_block(runtime_type, raw_runtime_genesis_config)
+    fn generate_genesis_state_root(&self, runtime_type: RuntimeType) -> Option<H256> {
+        self.generate_genesis_block(runtime_type)
             .map(|genesis_block| *genesis_block.header().state_root())
             .ok()
             .map(Into::into)
