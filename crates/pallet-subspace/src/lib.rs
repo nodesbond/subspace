@@ -44,7 +44,7 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::consensus::verify_solution;
+use sp_consensus_subspace::consensus::verify_solution_sp_consensus;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
@@ -1401,7 +1401,7 @@ fn check_vote<T: Config>(
             .segment_index(),
     );
 
-    if let Err(error) = verify_solution(
+    if let Err(error) = verify_solution_sp_consensus(
         solution.into(),
         slot.into(),
         (&VerifySolutionParams {

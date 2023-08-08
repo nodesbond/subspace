@@ -465,7 +465,7 @@ impl PosExtension {
 #[runtime_interface]
 pub trait Consensus {
     /// Verify whether solution is valid.
-    fn verify_solution(
+    fn verify_solution_sp_consensus(
         &mut self,
         solution: WrappedSolution,
         slot: u64,

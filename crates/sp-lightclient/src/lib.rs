@@ -23,7 +23,7 @@ use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_arithmetic::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::consensus::verify_solution;
+use sp_consensus_subspace::consensus::verify_solution_sp_consensus;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, verify_next_digests, CompatibleDigestItem,
     Error as DigestError, ErrorDigestType, NextDigestsVerificationParams, PreDigest,
@@ -386,7 +386,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 parent_header.header.hash(),
             )?;
 
-        verify_solution(
+        verify_solution_sp_consensus(
             (&header_digests.pre_digest.solution).into(),
             header_digests.pre_digest.slot.into(),
             (&VerifySolutionParams {
