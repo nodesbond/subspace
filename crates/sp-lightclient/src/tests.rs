@@ -36,7 +36,7 @@ use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
-    calculate_block_weight, derive_randomness, verify_solution, VerifySolutionParams,
+    calculate_block_weight, derive_randomness, verify_solution_tmp, VerifySolutionParams,
 };
 
 fn default_randomness() -> Randomness {
@@ -218,7 +218,7 @@ fn valid_header(
             proof_of_space: solution.proof_of_space,
         };
 
-        let solution_distance = verify_solution::<PosTable, _, _>(
+        let solution_distance = verify_solution_tmp::<PosTable, _, _>(
             &solution,
             slot,
             &VerifySolutionParams {

@@ -1043,7 +1043,7 @@ where
 
         // Piece is not checked during initial block verification because it requires access to
         // segment header and runtime, check it now.
-        subspace_verification::verify_solution::<PosTable, _, _>(
+        subspace_verification::verify_solution_tmp::<PosTable, _, _>(
             &pre_digest.solution,
             // Slot was already checked during initial block verification
             pre_digest.slot.into(),

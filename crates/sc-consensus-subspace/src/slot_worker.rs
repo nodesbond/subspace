@@ -55,7 +55,7 @@ use subspace_core_primitives::{
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{
-    check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
+    check_reward_signature, verify_solution_tmp, PieceCheckParams, VerifySolutionParams,
 };
 
 /// Errors while building the block proof of time.
@@ -325,7 +325,7 @@ where
                 .segment_commitment(parent_hash, sector_expiration_check_segment_index)
                 .ok()?;
 
-            let solution_verification_result = verify_solution::<PosTable, _, _>(
+            let solution_verification_result = verify_solution_tmp::<PosTable, _, _>(
                 &solution,
                 slot.into(),
                 &VerifySolutionParams {

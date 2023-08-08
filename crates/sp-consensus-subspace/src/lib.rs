@@ -56,7 +56,9 @@ use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::PosTableType;
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
+use subspace_verification::{
+    check_reward_signature, verify_solution_tmp, Error, VerifySolutionParams,
+};
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -484,7 +486,7 @@ pub trait Consensus {
 
         match pos_table_type {
             PosTableType::Chia => {
-                subspace_verification::verify_solution::<ChiaTable, _, _>(
+                subspace_verification::verify_solution_tmp::<ChiaTable, _, _>(
                     &solution.0,
                     slot,
                     &params.0,
@@ -493,7 +495,7 @@ pub trait Consensus {
                 .map_err(|error| error.to_string())?;
             }
             PosTableType::Shim => {
-                subspace_verification::verify_solution::<ShimTable, _, _>(
+                subspace_verification::verify_solution_tmp::<ShimTable, _, _>(
                     &solution.0,
                     slot,
                     &params.0,
@@ -689,7 +691,7 @@ where
     }
 
     // Verify that solution is valid
-    verify_solution::<PosTable, _, _>(
+    verify_solution_tmp::<PosTable, _, _>(
         &pre_digest.solution,
         slot.into(),
         verify_solution_params,

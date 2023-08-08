@@ -179,7 +179,7 @@ pub fn calculate_block_weight(solution_range: SolutionRange) -> BlockWeight {
 
 /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
 /// success.
-pub fn verify_solution<'a, PosTable, FarmerPublicKey, RewardAddress>(
+pub fn verify_solution_tmp<'a, PosTable, FarmerPublicKey, RewardAddress>(
     solution: &'a Solution<FarmerPublicKey, RewardAddress>,
     slot: SlotNumber,
     params: &'a VerifySolutionParams,
