@@ -329,7 +329,7 @@ where
                 &solution,
                 slot.into(),
                 &VerifySolutionParams {
-                    global_randomness,
+                    global_randomness_verify: global_randomness,
                     solution_range: voting_solution_range,
                     piece_check_params: Some(PieceCheckParams {
                         max_pieces_in_sector,

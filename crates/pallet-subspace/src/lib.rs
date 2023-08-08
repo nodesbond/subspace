@@ -1405,7 +1405,7 @@ fn check_vote<T: Config>(
         solution.into(),
         slot.into(),
         (&VerifySolutionParams {
-            global_randomness: vote_verification_data.global_randomness,
+            global_randomness_verify: vote_verification_data.global_randomness,
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
                 max_pieces_in_sector: T::MaxPiecesInSector::get(),

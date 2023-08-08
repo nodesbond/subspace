@@ -637,7 +637,7 @@ pub struct VerifiedHeaderInfo<RewardAddress> {
 ///
 /// `pre_digest` argument is optional in case it is available to avoid doing the work of extracting
 /// it from the header twice.
-pub fn check_header<PosTable, Header, RewardAddress>(
+pub fn check_header_sp_consensus<PosTable, Header, RewardAddress>(
     params: VerificationParams<Header>,
     pre_digest: Option<PreDigest<FarmerPublicKey, RewardAddress>>,
     kzg: &Kzg,

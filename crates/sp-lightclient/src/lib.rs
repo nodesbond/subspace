@@ -390,7 +390,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             (&header_digests.pre_digest.solution).into(),
             header_digests.pre_digest.slot.into(),
             (&VerifySolutionParams {
-                global_randomness: header_digests.global_randomness,
+                global_randomness_verify: header_digests.global_randomness,
                 solution_range: header_digests.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,

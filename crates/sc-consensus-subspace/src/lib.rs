@@ -66,8 +66,8 @@ use sp_consensus_subspace::digests::{
     SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
-    check_header, ChainConstants, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
-    VerificationError, VerificationParams,
+    check_header_sp_consensus, ChainConstants, CheckedHeader, FarmerPublicKey, FarmerSignature,
+    SubspaceApi, VerificationError, VerificationParams,
 };
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
@@ -750,12 +750,12 @@ where
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
-            check_header::<PosTable, _, FarmerPublicKey>(
+            check_header_sp_consensus::<PosTable, _, FarmerPublicKey>(
                 VerificationParams {
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
                     verify_solution_params: &VerifySolutionParams {
-                        global_randomness: subspace_digest_items.global_randomness,
+                        global_randomness_verify: subspace_digest_items.global_randomness,
                         solution_range: subspace_digest_items.solution_range,
                         piece_check_params: None,
                     },
@@ -1048,7 +1048,7 @@ where
             // Slot was already checked during initial block verification
             pre_digest.slot.into(),
             &VerifySolutionParams {
-                global_randomness: subspace_digest_items.global_randomness,
+                global_randomness_verify: subspace_digest_items.global_randomness,
                 solution_range: subspace_digest_items.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,

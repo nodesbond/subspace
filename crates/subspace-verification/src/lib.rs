@@ -163,7 +163,7 @@ pub struct PieceCheckParams {
 #[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct VerifySolutionParams {
     /// Global randomness
-    pub global_randomness: Randomness,
+    pub global_randomness_verify: Randomness,
     /// Solution range
     pub solution_range: SolutionRange,
     /// Parameters for checking piece validity.
@@ -190,7 +190,7 @@ where
     PublicKey: From<&'a FarmerPublicKey>,
 {
     let VerifySolutionParams {
-        global_randomness,
+        global_randomness_verify,
         solution_range,
         piece_check_params,
     } = params;
@@ -200,7 +200,7 @@ where
         solution.sector_index,
     );
 
-    let global_challenge = global_randomness.derive_global_challenge(slot);
+    let global_challenge = global_randomness_verify.derive_global_challenge(slot);
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
 

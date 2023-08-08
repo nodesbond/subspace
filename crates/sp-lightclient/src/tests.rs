@@ -222,7 +222,7 @@ fn valid_header(
             &solution,
             slot,
             &VerifySolutionParams {
-                global_randomness,
+                global_randomness_verify: global_randomness,
                 solution_range: SolutionRange::MAX,
                 piece_check_params: None,
             },
