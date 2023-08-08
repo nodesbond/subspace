@@ -781,7 +781,7 @@ impl_runtime_apis! {
             SlotDuration::from_millis(Subspace::slot_duration())
         }
 
-        fn global_randomnesses() -> GlobalRandomnesses {
+        fn pallet_global_randomnesses() -> GlobalRandomnesses {
             Subspace::global_randomnesses()
         }
 

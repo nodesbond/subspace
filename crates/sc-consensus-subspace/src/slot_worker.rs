@@ -652,7 +652,7 @@ where
 {
     client
         .runtime_api()
-        .global_randomnesses(parent_hash)
+        .pallet_global_randomnesses(parent_hash)
         .map(|randomnesses| randomnesses.next.unwrap_or(randomnesses.current))
 }
 

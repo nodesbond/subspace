@@ -516,7 +516,7 @@ sp_api::decl_runtime_apis! {
         fn slot_duration() -> SlotDuration;
 
         /// Global randomnesses used for deriving global challenges.
-        fn global_randomnesses() -> GlobalRandomnesses;
+        fn pallet_global_randomnesses() -> GlobalRandomnesses;
 
         /// Solution ranges.
         fn solution_ranges() -> SolutionRanges;
