@@ -402,7 +402,7 @@ fn add_headers_to_chain(
 
             let randomness = digests
                 .next_global_randomness
-                .unwrap_or(digests.global_randomness);
+                .unwrap_or(digests.global_randomness_on_chain);
             (randomness, digests.next_global_randomness.is_some())
         };
 
@@ -766,7 +766,7 @@ fn test_reorg_to_heavier_smaller_chain() {
                 number: 3,
                 slot: next_slot(constants.slot_probability, digests_at_2.pre_digest.slot).into(),
                 keypair: &keypair,
-                global_randomness: digests_at_2.global_randomness,
+                global_randomness: digests_at_2.global_randomness_on_chain,
                 farmer_parameters: &farmer_parameters,
             });
         seal_header(&keypair, &mut header);
@@ -821,7 +821,7 @@ fn test_next_global_randomness_digest() {
                 number: 5,
                 slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
                 keypair: &keypair,
-                global_randomness: digests_at_4.global_randomness,
+                global_randomness: digests_at_4.global_randomness_on_chain,
                 farmer_parameters: &farmer_parameters,
             });
         seal_header(&keypair, &mut header);
@@ -888,7 +888,7 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
                 number: 5,
                 slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
                 keypair: &keypair,
-                global_randomness: digests_at_4.global_randomness,
+                global_randomness: digests_at_4.global_randomness_on_chain,
                 farmer_parameters: &farmer_parameters,
             });
         seal_header(&keypair, &mut header);
@@ -961,7 +961,7 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
                 number: 5,
                 slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
                 keypair: &keypair,
-                global_randomness: digests_at_4.global_randomness,
+                global_randomness: digests_at_4.global_randomness_on_chain,
                 farmer_parameters: &farmer_parameters,
             });
         importer
@@ -1021,7 +1021,7 @@ fn test_enable_solution_range_adjustment_without_override() {
                 number: 5,
                 slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
                 keypair: &keypair,
-                global_randomness: digests_at_4.global_randomness,
+                global_randomness: digests_at_4.global_randomness_on_chain,
                 farmer_parameters: &farmer_parameters,
             });
         importer
@@ -1090,7 +1090,7 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
                 number: 4,
                 slot: next_slot(constants.slot_probability, digests_at_3.pre_digest.slot).into(),
                 keypair: &keypair,
-                global_randomness: digests_at_3.global_randomness,
+                global_randomness: digests_at_3.global_randomness_on_chain,
                 farmer_parameters: &farmer_parameters,
             });
         importer
@@ -1159,7 +1159,7 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
                 number: 5,
                 slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
                 keypair: &keypair,
-                global_randomness: digests_at_4.global_randomness,
+                global_randomness: digests_at_4.global_randomness_on_chain,
                 farmer_parameters: &farmer_parameters,
             });
         importer
@@ -1220,7 +1220,7 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
                 number: 5,
                 slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
                 keypair: &keypair,
-                global_randomness: digests_at_4.global_randomness,
+                global_randomness: digests_at_4.global_randomness_on_chain,
                 farmer_parameters: &farmer_parameters,
             });
         importer

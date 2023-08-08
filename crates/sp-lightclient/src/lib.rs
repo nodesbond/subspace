@@ -136,7 +136,7 @@ impl<Header: HeaderT> HeaderExt<Header> {
     /// If next digests are not present, then we fallback to the current ones.
     fn extract_next_digest_items(&self) -> Result<NextDigestItems, ImportError<Header>> {
         let SubspaceDigestItems {
-            global_randomness,
+            global_randomness_on_chain,
             solution_range,
             next_global_randomness,
             next_solution_range,
@@ -169,7 +169,7 @@ impl<Header: HeaderT> HeaderExt<Header> {
         };
 
         Ok(NextDigestItems {
-            next_global_randomness: next_global_randomness.unwrap_or(global_randomness),
+            next_global_randomness: next_global_randomness.unwrap_or(global_randomness_on_chain),
             next_solution_range: next_solution_range.unwrap_or(solution_range),
         })
     }
@@ -390,7 +390,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             (&header_digests.pre_digest.solution).into(),
             header_digests.pre_digest.slot.into(),
             (&VerifySolutionParams {
-                global_randomness_verify: header_digests.global_randomness,
+                global_randomness_verify: header_digests.global_randomness_on_chain,
                 solution_range: header_digests.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,
@@ -494,7 +494,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         };
 
         // check the digest items against the next digest items from parent header
-        if pre_digest_items.global_randomness != next_digest_items.next_global_randomness {
+        if pre_digest_items.global_randomness_on_chain != next_digest_items.next_global_randomness {
             return Err(ImportError::InvalidDigest(
                 ErrorDigestType::GlobalRandomness,
             ));

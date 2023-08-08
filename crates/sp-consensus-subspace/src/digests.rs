@@ -450,7 +450,7 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     /// Signature (seal) if present
     pub signature: Option<Signature>,
     /// Global randomness
-    pub global_randomness: Randomness,
+    pub global_randomness_on_chain: Randomness,
     /// Solution range
     pub solution_range: SolutionRange,
     /// Next global randomness
@@ -619,7 +619,7 @@ where
     Ok(SubspaceDigestItems {
         pre_digest: maybe_pre_digest.ok_or(Error::Missing(ErrorDigestType::PreDigest))?,
         signature: maybe_seal,
-        global_randomness: maybe_global_randomness
+        global_randomness_on_chain: maybe_global_randomness
             .ok_or(Error::Missing(ErrorDigestType::GlobalRandomness))?,
         solution_range: maybe_solution_range
             .ok_or(Error::Missing(ErrorDigestType::SolutionRange))?,

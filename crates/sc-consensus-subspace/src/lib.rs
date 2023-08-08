@@ -755,7 +755,7 @@ where
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
                     verify_solution_params: &VerifySolutionParams {
-                        global_randomness_verify: subspace_digest_items.global_randomness,
+                        global_randomness_verify: subspace_digest_items.global_randomness_on_chain,
                         solution_range: subspace_digest_items.solution_range,
                         piece_check_params: None,
                     },
@@ -967,7 +967,7 @@ where
             let correct_global_randomness =
                 match parent_subspace_digest_items.next_global_randomness {
                     Some(global_randomness) => global_randomness,
-                    None => parent_subspace_digest_items.global_randomness,
+                    None => parent_subspace_digest_items.global_randomness_on_chain,
                 };
 
             let correct_solution_range = match parent_subspace_digest_items.next_solution_range {
@@ -992,7 +992,7 @@ where
             (correct_global_randomness, correct_solution_range)
         };
 
-        if subspace_digest_items.global_randomness != correct_global_randomness {
+        if subspace_digest_items.global_randomness_on_chain != correct_global_randomness {
             return Err(Error::InvalidGlobalRandomness(block_hash));
         }
 
@@ -1048,7 +1048,7 @@ where
             // Slot was already checked during initial block verification
             pre_digest.slot.into(),
             &VerifySolutionParams {
-                global_randomness_verify: subspace_digest_items.global_randomness,
+                global_randomness_verify: subspace_digest_items.global_randomness_on_chain,
                 solution_range: subspace_digest_items.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,
