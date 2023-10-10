@@ -7662,8 +7662,7 @@ dependencies = [
 [[package]]
 name = "parity-db"
 version = "0.4.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab512a34b3c2c5e465731cc7668edf79208bbe520be03484eeb05e63ed221735"
+source = "git+https://github.com/subspace/parity-db?rev=a05cd7875d72191aced85fe3b7f2710c9b36213b#a05cd7875d72191aced85fe3b7f2710c9b36213b"
 dependencies = [
  "blake2",
  "crc32fast",
@@ -12899,7 +12898,7 @@ checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
  "cfg-if",
  "digest 0.10.7",
- "rand 0.8.5",
+ "rand 0.7.3",
  "static_assertions",
 ]
 

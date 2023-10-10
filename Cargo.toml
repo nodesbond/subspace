@@ -90,6 +90,9 @@ inherits = "release"
 lto = "fat"
 codegen-units = 1
 
+[patch.crates-io]
+parity-db = { git = "https://github.com/subspace/parity-db", rev = "a05cd7875d72191aced85fe3b7f2710c9b36213b" }
+
 # Reason: We need to patch substrate dependency of frontier to our fork
 # TODO: Remove if/when we are using upstream substrate instead of fork
 [patch."https://github.com/paritytech/polkadot-sdk.git"]
