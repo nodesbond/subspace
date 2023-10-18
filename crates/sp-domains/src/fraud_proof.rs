@@ -208,13 +208,13 @@ pub enum ProofDataPerExpectedInvalidBundle {
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct TrueInvalidBundleEntryFraudProof {
-    bad_receipt_hash: ReceiptHash,
-    domain_id: DomainId,
-    bundle_index: u32,
-    mismatched_extrinsic: OpaqueExtrinsic,
-    mismatched_extrinsic_index: u32,
-    extrinsic_inclusion_proof: Vec<Vec<u8>>,
-    proof_data: ProofDataPerExpectedInvalidBundle,
+    pub bad_receipt_hash: ReceiptHash,
+    pub domain_id: DomainId,
+    pub bundle_index: u32,
+    pub mismatched_extrinsic: OpaqueExtrinsic,
+    pub mismatched_extrinsic_index: u32,
+    pub extrinsic_inclusion_proof: Vec<Vec<u8>>,
+    pub proof_data: ProofDataPerExpectedInvalidBundle,
 }
 
 impl TrueInvalidBundleEntryFraudProof {
