@@ -185,12 +185,12 @@ pub enum VerificationError {
 
 // TODO: Define rest of the fraud proof fields
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct MissingInvalidBundleEntryFraudProof {
+pub struct FalseInvalidBundleEntryFraudProof {
     domain_id: DomainId,
     bundle_index: u32,
 }
 
-impl MissingInvalidBundleEntryFraudProof {
+impl FalseInvalidBundleEntryFraudProof {
     pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
         Self {
             domain_id,
@@ -201,12 +201,12 @@ impl MissingInvalidBundleEntryFraudProof {
 
 // TODO: Define rest of the fraud proof fields
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ValidAsInvalidBundleEntryFraudProof {
+pub struct TrueInvalidBundleEntryFraudProof {
     domain_id: DomainId,
     bundle_index: u32,
 }
 
-impl ValidAsInvalidBundleEntryFraudProof {
+impl TrueInvalidBundleEntryFraudProof {
     pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
         Self {
             domain_id,
@@ -218,15 +218,15 @@ impl ValidAsInvalidBundleEntryFraudProof {
 /// Fraud proof indicating that `invalid_bundles` field of the receipt is incorrect
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum InvalidBundlesFraudProof {
-    MissingInvalidBundleEntry(MissingInvalidBundleEntryFraudProof),
-    ValidAsInvalid(ValidAsInvalidBundleEntryFraudProof),
+    TrueInvalid(TrueInvalidBundleEntryFraudProof),
+    FalseInvalid(FalseInvalidBundleEntryFraudProof),
 }
 
 impl InvalidBundlesFraudProof {
     pub fn domain_id(&self) -> DomainId {
         match self {
-            InvalidBundlesFraudProof::MissingInvalidBundleEntry(proof) => proof.domain_id,
-            InvalidBundlesFraudProof::ValidAsInvalid(proof) => proof.domain_id,
+            InvalidBundlesFraudProof::TrueInvalid(proof) => proof.domain_id,
+            InvalidBundlesFraudProof::FalseInvalid(proof) => proof.domain_id,
         }
     }
 }

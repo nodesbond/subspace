@@ -11,9 +11,9 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
-    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
-    MissingInvalidBundleEntryFraudProof, ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
+    ExecutionPhase, ExtrinsicDigest, FalseInvalidBundleEntryFraudProof, FraudProof,
+    InvalidBundlesFraudProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
+    InvalidTotalRewardsProof, TrueInvalidBundleEntryFraudProof, ValidBundleDigest,
 };
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
@@ -136,16 +136,17 @@ where
         match mismatch_type {
             // TODO: Generate a proper proof once fields are in place
             BundleMismatchType::TrueInvalid(_invalid_type) => Ok(FraudProof::InvalidBundles(
-                InvalidBundlesFraudProof::ValidAsInvalid(ValidAsInvalidBundleEntryFraudProof::new(
+                InvalidBundlesFraudProof::TrueInvalid(TrueInvalidBundleEntryFraudProof::new(
                     domain_id,
                     bundle_index,
                 )),
             )),
             // TODO: Generate a proper proof once fields are in place
             BundleMismatchType::FalseInvalid(_invalid_type) => Ok(FraudProof::InvalidBundles(
-                InvalidBundlesFraudProof::MissingInvalidBundleEntry(
-                    MissingInvalidBundleEntryFraudProof::new(domain_id, bundle_index),
-                ),
+                InvalidBundlesFraudProof::FalseInvalid(FalseInvalidBundleEntryFraudProof::new(
+                    domain_id,
+                    bundle_index,
+                )),
             )),
             BundleMismatchType::Valid => Err(sp_blockchain::Error::Application(
                 "Unexpected bundle mismatch type, this should not happen"
