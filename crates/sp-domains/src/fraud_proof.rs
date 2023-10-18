@@ -211,7 +211,6 @@ pub struct TrueInvalidBundleEntryFraudProof {
     pub bad_receipt_hash: ReceiptHash,
     pub domain_id: DomainId,
     pub bundle_index: u32,
-    pub mismatched_extrinsic: OpaqueExtrinsic,
     pub mismatched_extrinsic_index: u32,
     pub extrinsic_inclusion_proof: Vec<Vec<u8>>,
     pub proof_data: ProofDataPerExpectedInvalidBundle,
@@ -222,7 +221,6 @@ impl TrueInvalidBundleEntryFraudProof {
         bad_receipt_hash: ReceiptHash,
         domain_id: DomainId,
         bundle_index: u32,
-        mismatched_extrinsic: OpaqueExtrinsic,
         mismatched_extrinsic_index: u32,
         extrinsic_inclusion_proof: Vec<Vec<u8>>,
         proof_data: ProofDataPerExpectedInvalidBundle,
@@ -231,7 +229,6 @@ impl TrueInvalidBundleEntryFraudProof {
             bad_receipt_hash,
             domain_id,
             bundle_index,
-            mismatched_extrinsic,
             mismatched_extrinsic_index,
             extrinsic_inclusion_proof,
             proof_data,
@@ -252,6 +249,14 @@ impl InvalidBundlesFraudProof {
         match self {
             InvalidBundlesFraudProof::TrueInvalid(proof) => proof.domain_id,
             InvalidBundlesFraudProof::FalseInvalid(proof) => proof.domain_id,
+        }
+    }
+
+    pub fn bad_receipt_hash(&self) -> ReceiptHash {
+        match self {
+            InvalidBundlesFraudProof::TrueInvalid(proof) => proof.bad_receipt_hash,
+            // TODO: Return bad receipt hash when the proper fields are in place
+            InvalidBundlesFraudProof::FalseInvalid(proof) => Default::default(),
         }
     }
 }
@@ -307,8 +312,9 @@ impl<Number, Hash> FraudProof<Number, Hash> {
                 bad_receipt_hash, ..
             } => *bad_receipt_hash,
             FraudProof::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
-            // TODO: Remove default value when invalid bundle proofs are fully expanded
-            FraudProof::InvalidBundles(_) => Default::default(),
+            FraudProof::InvalidBundles(invalid_bundle_fraud_proof) => {
+                invalid_bundle_fraud_proof.bad_receipt_hash()
+            }
             FraudProof::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
         }
     }

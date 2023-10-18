@@ -141,7 +141,6 @@ where
                     bad_receipt_hash,
                     domain_id,
                     bundle_index,
-                    Default::default(),
                     0,
                     vec![],
                     ProofDataPerExpectedInvalidBundle::OutOfRangeTx {},
