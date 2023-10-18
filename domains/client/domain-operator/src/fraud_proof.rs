@@ -13,7 +13,8 @@ use sp_core::H256;
 use sp_domains::fraud_proof::{
     ExecutionPhase, ExtrinsicDigest, FalseInvalidBundleEntryFraudProof, FraudProof,
     InvalidBundlesFraudProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof, TrueInvalidBundleEntryFraudProof, ValidBundleDigest,
+    InvalidTotalRewardsProof, ProofDataPerExpectedInvalidBundle, TrueInvalidBundleEntryFraudProof,
+    ValidBundleDigest,
 };
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
@@ -128,7 +129,7 @@ where
         _local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
-        _bad_receipt_hash: H256,
+        bad_receipt_hash: H256,
     ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
     where
         PCB: BlockT,
@@ -137,8 +138,13 @@ where
             // TODO: Generate a proper proof once fields are in place
             BundleMismatchType::TrueInvalid(_invalid_type) => Ok(FraudProof::InvalidBundles(
                 InvalidBundlesFraudProof::TrueInvalid(TrueInvalidBundleEntryFraudProof::new(
+                    bad_receipt_hash,
                     domain_id,
                     bundle_index,
+                    Default::default(),
+                    0,
+                    vec![],
+                    ProofDataPerExpectedInvalidBundle::OutOfRangeTx {},
                 )),
             )),
             // TODO: Generate a proper proof once fields are in place

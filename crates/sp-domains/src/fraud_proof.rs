@@ -5,6 +5,7 @@ use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
+use sp_runtime::OpaqueExtrinsic;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
@@ -199,23 +200,47 @@ impl FalseInvalidBundleEntryFraudProof {
     }
 }
 
-// TODO: Define rest of the fraud proof fields
+/// Proof data specific to each *expected* invalid bundle type
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum ProofDataPerExpectedInvalidBundle {
+    OutOfRangeTx {},
+}
+
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct TrueInvalidBundleEntryFraudProof {
+    bad_receipt_hash: ReceiptHash,
     domain_id: DomainId,
     bundle_index: u32,
+    mismatched_extrinsic: OpaqueExtrinsic,
+    mismatched_extrinsic_index: u32,
+    extrinsic_inclusion_proof: Vec<Vec<u8>>,
+    proof_data: ProofDataPerExpectedInvalidBundle,
 }
 
 impl TrueInvalidBundleEntryFraudProof {
-    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+    pub fn new(
+        bad_receipt_hash: ReceiptHash,
+        domain_id: DomainId,
+        bundle_index: u32,
+        mismatched_extrinsic: OpaqueExtrinsic,
+        mismatched_extrinsic_index: u32,
+        extrinsic_inclusion_proof: Vec<Vec<u8>>,
+        proof_data: ProofDataPerExpectedInvalidBundle,
+    ) -> Self {
         Self {
+            bad_receipt_hash,
             domain_id,
             bundle_index,
+            mismatched_extrinsic,
+            mismatched_extrinsic_index,
+            extrinsic_inclusion_proof,
+            proof_data,
         }
     }
 }
 
-/// Fraud proof indicating that `invalid_bundles` field of the receipt is incorrect
+/// Fraud proof indicating that a bundle included in `inboxed_bundles` field has incorrect
+/// `bundle_validity` field
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum InvalidBundlesFraudProof {
     TrueInvalid(TrueInvalidBundleEntryFraudProof),
