@@ -13,9 +13,9 @@ include = [
 [dependencies]
 async-trait = "0.1.73"
 codec = { package = "parity-scale-codec", version = "3.6.5", features = ["derive"] }
-sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
-sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
-sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
+sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c03d8ea246dccdd2c852145e93dbef0443e354c8" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c03d8ea246dccdd2c852145e93dbef0443e354c8" }
+sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c03d8ea246dccdd2c852145e93dbef0443e354c8" }
 sp-domains = { version = "0.1.0", path = "../sp-domains" }
-sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
+sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "c03d8ea246dccdd2c852145e93dbef0443e354c8" }
 subspace-fraud-proof = { version = "0.1.0", path = "../subspace-fraud-proof" }
