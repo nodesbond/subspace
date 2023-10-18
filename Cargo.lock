@@ -10722,6 +10722,7 @@ name = "sp-domains-fraud-proof"
 version = "0.1.0"
 dependencies = [
  "domain-block-preprocessor",
+ "domain-runtime-primitives",
  "hash-db 0.16.0",
  "parity-scale-codec",
  "sc-executor",

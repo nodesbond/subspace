@@ -246,6 +246,7 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
 pub(crate) struct MockDomainFraudProofExtension {
     block_randomness: Randomness,
     timestamp: Moment,
+    tx_in_range: bool,
 }
 
 impl FraudProofHostFunctions for MockDomainFraudProofExtension {
@@ -268,6 +269,9 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                     )
                     .encode(),
                 )
+            }
+            FraudProofVerificationInfoRequest::TxRangeCheck { .. } => {
+                FraudProofVerificationInfoResponse::TxRangeCheck(self.tx_in_range)
             }
         };
 
@@ -905,6 +909,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
     let fraud_proof_ext = FraudProofExtension::new(Arc::new(MockDomainFraudProofExtension {
         block_randomness: Randomness::from([1u8; 32]),
         timestamp: 1000,
+        tx_in_range: true,
     }));
     ext.register_extension(fraud_proof_ext);
 

@@ -1,5 +1,5 @@
 use crate::{FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse};
-use codec::Encode;
+use codec::{Decode, Encode};
 use domain_block_preprocessor::runtime_api::InherentExtrinsicConstructor;
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
 use sc_executor::RuntimeVersionOf;
@@ -9,9 +9,10 @@ use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::NumberFor;
+use sp_runtime::OpaqueExtrinsic;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{Randomness, U256};
 
 /// Trait to query and verify Domains Fraud proof.
 pub trait FraudProofHostFunctions: Send + Sync {
@@ -97,6 +98,43 @@ where
         .ok()
         .map(|ext| ext.encode())
     }
+
+    fn is_tx_in_range(
+        &self,
+        consensus_block_hash_with_runtime_code: H256,
+        consensus_block_hash_with_tx_range: H256,
+        domain_id: DomainId,
+        opaque_extrinsic: OpaqueExtrinsic,
+        bundle_vrf_hash: U256,
+    ) -> Option<bool> {
+        let runtime_api = self.consensus_client.runtime_api();
+        let consensus_block_hash_with_tx_range = consensus_block_hash_with_tx_range.into();
+        let domain_tx_range = runtime_api
+            .domain_tx_range(consensus_block_hash_with_tx_range, domain_id)
+            .ok()?;
+
+        let consensus_block_hash_with_runtime_code = consensus_block_hash_with_runtime_code.into();
+        let runtime_code = runtime_api
+            .domain_runtime_code(consensus_block_hash_with_runtime_code, domain_id)
+            .ok()??;
+
+        let domain_runtime_api_light =
+            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+
+        let encoded_extrinsic = opaque_extrinsic.encode();
+        let extrinsic =
+            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
+
+        <RuntimeApiLight<Executor> as domain_runtime_primitives::DomainCoreApi<
+                DomainBlock,
+            >>::is_within_tx_range(
+                &domain_runtime_api_light,
+                Default::default(), // Doesn't matter for RuntimeApiLight
+                &extrinsic,
+                &bundle_vrf_hash,
+                &domain_tx_range,
+            ).ok()
+    }
 }
 
 impl<Block, Client, DomainBlock, Executor> FraudProofHostFunctions
@@ -126,6 +164,23 @@ where
                     FraudProofVerificationInfoResponse::DomainTimestampExtrinsic(
                         domain_timestamp_extrinsic,
                     )
+                }),
+            FraudProofVerificationInfoRequest::TxRangeCheck {
+                consensus_block_hash_with_tx_range,
+                domain_id,
+                opaque_extrinsic,
+                bundle_vrf_hash,
+                ..
+            } => self
+                .is_tx_in_range(
+                    consensus_block_hash,
+                    consensus_block_hash_with_tx_range,
+                    domain_id,
+                    opaque_extrinsic,
+                    bundle_vrf_hash,
+                )
+                .map(|is_tx_in_range| {
+                    FraudProofVerificationInfoResponse::TxRangeCheck(is_tx_in_range)
                 }),
         }
     }
