@@ -5,7 +5,6 @@ use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
-use sp_runtime::OpaqueExtrinsic;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
@@ -256,7 +255,7 @@ impl InvalidBundlesFraudProof {
         match self {
             InvalidBundlesFraudProof::TrueInvalid(proof) => proof.bad_receipt_hash,
             // TODO: Return bad receipt hash when the proper fields are in place
-            InvalidBundlesFraudProof::FalseInvalid(proof) => Default::default(),
+            InvalidBundlesFraudProof::FalseInvalid(_proof) => Default::default(),
         }
     }
 }

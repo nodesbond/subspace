@@ -45,8 +45,11 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
+use sp_domains::fraud_proof::InvalidBundlesFraudProof::{FalseInvalid, TrueInvalid};
 use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
-use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
+use sp_domains::verification::{
+    verify_invalid_total_rewards_fraud_proof, verify_true_invalid_bundle_fraud_proof,
+};
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
@@ -603,6 +606,8 @@ mod pallet {
         InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
         /// Invalid domain extrinsic fraud proof
         InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
+        /// Invalid bundle fraud proof verification error
+        InvalidBundleFraudProof(sp_domains::verification::VerificationError),
         /// Failed to get block randomness.
         FailedToGetBlockRandomness,
         /// Failed to get domain timestamp extrinsic.
@@ -1576,6 +1581,21 @@ impl<T: Config> Pallet<T> {
                     domain_timestamp_extrinsic,
                 )
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
+            }
+            FraudProof::InvalidBundles(invalid_bundles_fraud_proof) => {
+                match invalid_bundles_fraud_proof {
+                    TrueInvalid(true_invalid_fraud_proof) => {
+                        verify_true_invalid_bundle_fraud_proof::<
+                            T::Block,
+                            T::DomainNumber,
+                            T::DomainHash,
+                            BalanceOf<T>,
+                        >(bad_receipt, true_invalid_fraud_proof)
+                        .map_err(FraudProofError::InvalidBundleFraudProof)?;
+                    }
+                    // TODO: Verify false invalid fraud proof
+                    FalseInvalid(_false_invalid_fraud_proof) => {}
+                }
             }
             _ => {}
         }

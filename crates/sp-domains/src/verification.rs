@@ -1,3 +1,4 @@
+use crate::fraud_proof::{ProofDataPerExpectedInvalidBundle, TrueInvalidBundleEntryFraudProof};
 use crate::{ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
 use domain_runtime_primitives::opaque::AccountId;
 use frame_support::PalletError;
@@ -7,8 +8,10 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use scale_info::TypeInfo;
+use sp_api::BlockT;
 use sp_core::storage::StorageKey;
-use sp_runtime::traits::{Block, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block, NumberFor};
+use sp_runtime::OpaqueExtrinsic;
 use sp_state_machine::trace;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::vec_deque::VecDeque;
@@ -29,6 +32,8 @@ pub enum VerificationError {
     FailedToDecode,
     /// Invalid bundle digest
     InvalidBundleDigest,
+    /// Bundle with requested index not found in execution receipt
+    BundleNotFound,
 }
 
 pub struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
@@ -47,6 +52,48 @@ impl<H: Hasher> StorageProofVerifier<H> {
         let decoded = V::decode(&mut &val[..]).map_err(|_| VerificationError::FailedToDecode)?;
 
         Ok(decoded)
+    }
+}
+
+pub fn verify_true_invalid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, Balance>(
+    bad_receipt: ExecutionReceipt<
+        NumberFor<CBlock>,
+        CBlock::Hash,
+        DomainNumber,
+        DomainHash,
+        Balance,
+    >,
+    true_invalid_fraud_proof: &TrueInvalidBundleEntryFraudProof,
+) -> Result<(), VerificationError>
+where
+    CBlock: BlockT,
+{
+    let true_invalid_bundle_entry = bad_receipt
+        .inboxed_bundles
+        .get(true_invalid_fraud_proof.bundle_index as usize)
+        .ok_or(VerificationError::BundleNotFound)?;
+
+    let _extrinsic: OpaqueExtrinsic = StorageProofVerifier::<BlakeTwo256>::verify_and_get_value(
+        &true_invalid_bundle_entry.extrinsics_root,
+        StorageProof::new(
+            true_invalid_fraud_proof
+                .extrinsic_inclusion_proof
+                .clone()
+                .drain(..),
+        ),
+        StorageKey(
+            true_invalid_fraud_proof
+                .mismatched_extrinsic_index
+                .to_be_bytes()
+                .to_vec(),
+        ),
+    )?;
+
+    match true_invalid_fraud_proof.proof_data {
+        ProofDataPerExpectedInvalidBundle::OutOfRangeTx {} => {
+            // TODO: Replace this with actual invocation of host functions
+            Ok(())
+        }
     }
 }
 

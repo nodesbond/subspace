@@ -37,7 +37,7 @@ use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::vec::Vec;
-use subspace_core_primitives::{Randomness, U256};
+use subspace_core_primitives::Randomness;
 
 /// Request type to fetch required verification information for fraud proof through Host function.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -55,9 +55,10 @@ pub enum FraudProofVerificationInfoRequest {
         domain_block_state_root: H256,
         /// Runtime storage with proof required for executing tx range check. (Unused since currently api is stateless)
         domain_runtime_storage_proof: Vec<Vec<u8>>,
+        /// Index of the bundle in which the extrinsic exists
+        bundle_index: u32,
         /// Extrinsic for which we need to check the range
         opaque_extrinsic: OpaqueExtrinsic,
-        bundle_vrf_hash: U256,
     },
 }
 
