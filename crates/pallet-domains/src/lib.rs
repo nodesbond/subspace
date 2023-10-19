@@ -60,8 +60,8 @@ use sp_domains_fraud_proof::verification::verify_invalid_domain_extrinsics_root_
 use sp_domains_fraud_proof::{
     FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
 };
-use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Zero};
-use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, CheckedSub, Hash, One, Zero};
+use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
@@ -1585,12 +1585,48 @@ impl<T: Config> Pallet<T> {
             FraudProof::InvalidBundles(invalid_bundles_fraud_proof) => {
                 match invalid_bundles_fraud_proof {
                     TrueInvalid(true_invalid_fraud_proof) => {
+                        let tx_range_fn = |domain_id: DomainId,
+                                           consensus_block_hash: <T::Block as BlockT>::Hash,
+                                           bundle_index: u32,
+                                           opaque_extrinsic: OpaqueExtrinsic|
+                         -> Result<
+                            bool,
+                            sp_domains::verification::VerificationError,
+                        > {
+                            let fraud_proof_verification_response =
+                                get_fraud_proof_verification_info(
+                                    H256::from_slice(consensus_block_hash.as_ref()),
+                                    FraudProofVerificationInfoRequest::TxRangeCheck {
+                                        domain_id,
+                                        bundle_index,
+                                        opaque_extrinsic,
+                                        domain_block_state_root: Default::default(),
+                                        domain_runtime_storage_proof: Default::default(),
+                                        consensus_block_hash_with_tx_range: H256::from_slice(consensus_block_hash.as_ref()) // TODO: Pass appropriate consensus block hash once dynamic tx range is implemented
+                                    },
+                                )
+                                .ok_or(
+                                    sp_domains::verification::VerificationError::TxRangeHostFnFailed,
+                                )?;
+
+                            match fraud_proof_verification_response {
+                                FraudProofVerificationInfoResponse::TxRangeCheck(
+                                    is_tx_in_range,
+                                ) => Ok(is_tx_in_range),
+                                _ => Err(
+                                    sp_domains::verification::VerificationError::ReceivedInvalidInfoFromHostFn,
+                                ),
+                            }
+                        };
                         verify_true_invalid_bundle_fraud_proof::<
                             T::Block,
                             T::DomainNumber,
                             T::DomainHash,
                             BalanceOf<T>,
-                        >(bad_receipt, true_invalid_fraud_proof)
+                            _,
+                        >(
+                            bad_receipt, true_invalid_fraud_proof, tx_range_fn
+                        )
                         .map_err(FraudProofError::InvalidBundleFraudProof)?;
                     }
                     // TODO: Verify false invalid fraud proof

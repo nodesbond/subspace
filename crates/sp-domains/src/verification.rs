@@ -1,5 +1,5 @@
 use crate::fraud_proof::{ProofDataPerExpectedInvalidBundle, TrueInvalidBundleEntryFraudProof};
-use crate::{ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
+use crate::{DomainId, ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
 use domain_runtime_primitives::opaque::AccountId;
 use frame_support::PalletError;
 use hash_db::Hasher;
@@ -34,6 +34,12 @@ pub enum VerificationError {
     InvalidBundleDigest,
     /// Bundle with requested index not found in execution receipt
     BundleNotFound,
+    /// Fraud proof mismatch with actual bundle entry
+    FraudProofMismatch,
+    /// Tx range host function returned err
+    TxRangeHostFnFailed,
+    /// Unable to receive tx range from host function
+    ReceivedInvalidInfoFromHostFn,
 }
 
 pub struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
@@ -55,7 +61,13 @@ impl<H: Hasher> StorageProofVerifier<H> {
     }
 }
 
-pub fn verify_true_invalid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, Balance>(
+pub fn verify_true_invalid_bundle_fraud_proof<
+    CBlock,
+    DomainNumber,
+    DomainHash,
+    Balance,
+    TxInRangeFn,
+>(
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
@@ -64,16 +76,23 @@ pub fn verify_true_invalid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, 
         Balance,
     >,
     true_invalid_fraud_proof: &TrueInvalidBundleEntryFraudProof,
+    is_tx_in_range_fn: TxInRangeFn,
 ) -> Result<(), VerificationError>
 where
     CBlock: BlockT,
+    TxInRangeFn:
+        Fn(DomainId, CBlock::Hash, u32, OpaqueExtrinsic) -> Result<bool, VerificationError>,
 {
     let true_invalid_bundle_entry = bad_receipt
         .inboxed_bundles
         .get(true_invalid_fraud_proof.bundle_index as usize)
         .ok_or(VerificationError::BundleNotFound)?;
 
-    let _extrinsic: OpaqueExtrinsic = StorageProofVerifier::<BlakeTwo256>::verify_and_get_value(
+    if !true_invalid_fraud_proof.matches_with_bundle_entry(true_invalid_bundle_entry) {
+        return Err(VerificationError::FraudProofMismatch);
+    }
+
+    let extrinsic: OpaqueExtrinsic = StorageProofVerifier::<BlakeTwo256>::verify_and_get_value(
         &true_invalid_bundle_entry.extrinsics_root,
         StorageProof::new(
             true_invalid_fraud_proof
@@ -91,7 +110,15 @@ where
 
     match true_invalid_fraud_proof.proof_data {
         ProofDataPerExpectedInvalidBundle::OutOfRangeTx {} => {
-            // TODO: Replace this with actual invocation of host functions
+            let is_tx_in_range = is_tx_in_range_fn(
+                true_invalid_fraud_proof.domain_id,
+                bad_receipt.consensus_block_hash,
+                true_invalid_fraud_proof.bundle_index,
+                extrinsic,
+            )?;
+            if is_tx_in_range {
+                return Err(VerificationError::InvalidProof);
+            }
             Ok(())
         }
     }
