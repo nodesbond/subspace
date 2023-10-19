@@ -1,4 +1,6 @@
-use crate::{DomainId, ReceiptHash, SealedBundleHeader};
+use crate::{
+    BundleValidity, DomainId, InboxedBundle, InvalidBundleType, ReceiptHash, SealedBundleHeader,
+};
 use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -232,6 +234,20 @@ impl TrueInvalidBundleEntryFraudProof {
             extrinsic_inclusion_proof,
             proof_data,
         }
+    }
+
+    pub fn matches_with_bundle_entry(&self, inboxed_bundle_entry: &InboxedBundle) -> bool {
+        if !inboxed_bundle_entry.is_invalid() {
+            return true;
+        }
+
+        let expected_bundle_validity = match self.proof_data {
+            ProofDataPerExpectedInvalidBundle::OutOfRangeTx { .. } => BundleValidity::Invalid(
+                InvalidBundleType::OutOfRangeTx(self.mismatched_extrinsic_index),
+            ),
+        };
+
+        expected_bundle_validity == inboxed_bundle_entry.bundle
     }
 }
 
