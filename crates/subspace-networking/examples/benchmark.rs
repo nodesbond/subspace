@@ -58,6 +58,8 @@ enum Command {
         retries: u16,
         #[arg(long, default_value_t = 1)]
         parallelism_level: u16,
+        #[arg(long, default_value_t = 1)]
+        repeat: u16,
     },
 }
 
@@ -90,8 +92,17 @@ async fn main() {
             start_with,
             retries,
             parallelism_level,
+            repeat,
         } => {
-            parallel_benchmark(node, max_pieces, start_with, retries, parallelism_level).await;
+            parallel_benchmark(
+                node,
+                max_pieces,
+                start_with,
+                retries,
+                parallelism_level,
+                repeat,
+            )
+            .await;
         }
     }
 
@@ -179,6 +190,7 @@ async fn parallel_benchmark(
     start_with: usize,
     retries: u16,
     parallelism_level: u16,
+    repeat: u16,
 ) {
     let start = Instant::now();
     let mut stats = PieceRequestStats::default();
@@ -193,6 +205,8 @@ async fn parallel_benchmark(
     let mut total_duration = Duration::default();
     let mut pure_total_duration = Duration::default();
     let mut pending_pieces = (start_with..(start_with + max_pieces))
+        .cycle()
+        .take(max_pieces * repeat as usize)
         .map(|i| {
             let piece_index = PieceIndex::from(i as u64);
             async move {
