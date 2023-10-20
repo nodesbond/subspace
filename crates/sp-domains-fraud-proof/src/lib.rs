@@ -51,15 +51,15 @@ pub enum FraudProofVerificationInfoRequest {
         domain_id: DomainId,
         /// Hash of the consensus block at which tx_range was queried
         consensus_block_hash_with_tx_range: H256,
-        /// State root of domain state at particular block. (Unused since currently api is stateless)
-        domain_block_state_root: H256,
         /// Runtime storage with proof required for executing tx range check. (Unused since currently api is stateless)
-        domain_runtime_storage_proof: Vec<Vec<u8>>,
+        consensus_block_tx_range_storage_proof: Vec<Vec<u8>>,
         /// Index of the bundle in which the extrinsic exists
         bundle_index: u32,
         /// Extrinsic for which we need to check the range
         opaque_extrinsic: OpaqueExtrinsic,
     },
+    /// The domain runtime code
+    DomainRuntimeCode(DomainId),
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -75,4 +75,15 @@ pub enum FraudProofVerificationInfoResponse {
     DomainTimestampExtrinsic(Vec<u8>),
     /// if particular extrinsic is in range for (domain, bundle) pair at given domain block
     TxRangeCheck(bool),
+    /// The domain runtime code
+    DomainRuntimeCode(Vec<u8>),
+}
+
+impl FraudProofVerificationInfoResponse {
+    pub fn into_domain_runtime_code(self) -> Option<Vec<u8>> {
+        match self {
+            Self::DomainRuntimeCode(c) => Some(c),
+            _ => None,
+        }
+    }
 }

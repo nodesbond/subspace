@@ -1,17 +1,14 @@
-use crate::fraud_proof::{ProofDataPerExpectedInvalidBundle, TrueInvalidBundleEntryFraudProof};
-use crate::{DomainId, ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
+use crate::{ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
 use domain_runtime_primitives::opaque::AccountId;
 use frame_support::PalletError;
 use hash_db::Hasher;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Compact, Decode, Encode};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use scale_info::TypeInfo;
-use sp_api::BlockT;
 use sp_core::storage::StorageKey;
-use sp_runtime::traits::{BlakeTwo256, Block, NumberFor};
-use sp_runtime::OpaqueExtrinsic;
+use sp_runtime::traits::{Block, NumberFor};
 use sp_state_machine::trace;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::vec_deque::VecDeque;
@@ -42,85 +39,56 @@ pub enum VerificationError {
     ReceivedInvalidInfoFromHostFn,
 }
 
+/// Type that provides utilities to verify the storage proof.
 pub struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
 
 impl<H: Hasher> StorageProofVerifier<H> {
-    pub fn verify_and_get_value<V: Decode>(
+    /// Extracts the value against a given key and returns a decoded value.
+    pub fn get_decoded_value<V: Decode>(
         state_root: &H::Out,
         proof: StorageProof,
         key: StorageKey,
     ) -> Result<V, VerificationError> {
+        let val = Self::get_bare_value(state_root, proof, key)?;
+        let decoded = V::decode(&mut &val[..]).map_err(|_| VerificationError::FailedToDecode)?;
+
+        Ok(decoded)
+    }
+
+    /// Returns the value against a given key.
+    pub fn get_bare_value(
+        state_root: &H::Out,
+        proof: StorageProof,
+        key: StorageKey,
+    ) -> Result<Vec<u8>, VerificationError> {
         let db = proof.into_memory_db::<H>();
         let val = read_trie_value::<LayoutV1<H>, _>(&db, state_root, key.as_ref(), None, None)
             .map_err(|_| VerificationError::InvalidProof)?
             .ok_or(VerificationError::MissingValue)?;
 
-        let decoded = V::decode(&mut &val[..]).map_err(|_| VerificationError::FailedToDecode)?;
-
-        Ok(decoded)
-    }
-}
-
-pub fn verify_true_invalid_bundle_fraud_proof<
-    CBlock,
-    DomainNumber,
-    DomainHash,
-    Balance,
-    TxInRangeFn,
->(
-    bad_receipt: ExecutionReceipt<
-        NumberFor<CBlock>,
-        CBlock::Hash,
-        DomainNumber,
-        DomainHash,
-        Balance,
-    >,
-    true_invalid_fraud_proof: &TrueInvalidBundleEntryFraudProof,
-    is_tx_in_range_fn: TxInRangeFn,
-) -> Result<(), VerificationError>
-where
-    CBlock: BlockT,
-    TxInRangeFn:
-        Fn(DomainId, CBlock::Hash, u32, OpaqueExtrinsic) -> Result<bool, VerificationError>,
-{
-    let true_invalid_bundle_entry = bad_receipt
-        .inboxed_bundles
-        .get(true_invalid_fraud_proof.bundle_index as usize)
-        .ok_or(VerificationError::BundleNotFound)?;
-
-    if !true_invalid_fraud_proof.matches_with_bundle_entry(true_invalid_bundle_entry) {
-        return Err(VerificationError::FraudProofMismatch);
+        Ok(val)
     }
 
-    let extrinsic: OpaqueExtrinsic = StorageProofVerifier::<BlakeTwo256>::verify_and_get_value(
-        &true_invalid_bundle_entry.extrinsics_root,
-        StorageProof::new(
-            true_invalid_fraud_proof
-                .extrinsic_inclusion_proof
-                .clone()
-                .drain(..),
-        ),
-        StorageKey(
-            true_invalid_fraud_proof
-                .mismatched_extrinsic_index
-                .to_be_bytes()
-                .to_vec(),
-        ),
-    )?;
-
-    match true_invalid_fraud_proof.proof_data {
-        ProofDataPerExpectedInvalidBundle::OutOfRangeTx {} => {
-            let is_tx_in_range = is_tx_in_range_fn(
-                true_invalid_fraud_proof.domain_id,
-                bad_receipt.consensus_block_hash,
-                true_invalid_fraud_proof.bundle_index,
-                extrinsic,
-            )?;
-            if is_tx_in_range {
-                return Err(VerificationError::InvalidProof);
-            }
-            Ok(())
+    /// Verifies the given storage proof and checks the expected_value matches the extracted value from the proof.
+    pub fn verify_storage_proof(
+        proof: StorageProof,
+        root: &H::Out,
+        expected_value: Vec<u8>,
+        storage_key: StorageKey,
+    ) -> bool
+    where
+        H: Hasher,
+    {
+        if let Ok(got_data) = StorageProofVerifier::<H>::get_bare_value(root, proof, storage_key) {
+            expected_value == got_data
+        } else {
+            false
         }
+    }
+
+    /// Constructs the storage key from a given enumerated index.
+    pub fn enumerated_storage_key(index: u32) -> StorageKey {
+        StorageKey(Compact(index).encode())
     }
 }
 
@@ -152,7 +120,7 @@ where
     let storage_key = StorageKey(crate::fraud_proof::operator_block_rewards_final_key());
     let storage_proof = storage_proof.clone();
 
-    let total_rewards = StorageProofVerifier::<Hashing>::verify_and_get_value::<Balance>(
+    let total_rewards = StorageProofVerifier::<Hashing>::get_decoded_value::<Balance>(
         &state_root,
         storage_proof,
         storage_key,
