@@ -110,6 +110,8 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 .get_closest_peers(PeerId::random().into())
                 .await;
 
+            error!("Got closest peers");
+
             // Acquire segment headers from peers.
             let get_peers_stream = match get_peers_result {
                 Ok(get_peers_stream) => get_peers_stream,
