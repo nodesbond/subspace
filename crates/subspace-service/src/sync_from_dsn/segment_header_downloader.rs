@@ -160,7 +160,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                             Some((peer_id, segment_headers))
                         }
                         Err(error) => {
-                            debug!(%peer_id, ?error, "Last segment headers request failed");
+                            error!(%peer_id, ?error, "Last segment headers request failed");
                             None
                         }
                     }
@@ -183,7 +183,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
 
                     continue;
                 } else {
-                    debug!(
+                    error!(
                         %peer_count,
                         %required_peers,
                         %retry_attempt,
