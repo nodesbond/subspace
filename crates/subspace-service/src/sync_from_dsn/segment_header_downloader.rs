@@ -127,6 +127,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
             // Hashmap here just to potentially peers
             let peer_blocks: BTreeMap<PeerId, Vec<SegmentHeader>> = get_peers_stream
                 .filter_map(|peer_id| async move {
+                    error!("Coming inside filter map");
                     let request_result = self
                         .dsn_node
                         .send_generic_request(
