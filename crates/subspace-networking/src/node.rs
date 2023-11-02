@@ -402,7 +402,7 @@ impl Node {
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
         let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
-        trace!(?key, "Starting 'GetClosestPeers' request.");
+        error!(?key, "Starting 'GetClosestPeers' request.");
 
         let (result_sender, result_receiver) = mpsc::unbounded();
 
