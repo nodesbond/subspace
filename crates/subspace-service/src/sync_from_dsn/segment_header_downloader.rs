@@ -110,7 +110,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 .get_closest_peers(PeerId::random().into())
                 .await;
 
-            error!("Got closest peers");
+            error!("Got closest peers async");
 
             // Acquire segment headers from peers.
             let get_peers_stream = match get_peers_result {
@@ -121,6 +121,8 @@ impl<'a> SegmentHeaderDownloader<'a> {
                     return Err(err.into());
                 }
             };
+
+            error!("Got closest peers sync");
 
             // Hashmap here just to potentially peers
             let peer_blocks: BTreeMap<PeerId, Vec<SegmentHeader>> = get_peers_stream
