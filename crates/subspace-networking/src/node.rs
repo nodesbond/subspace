@@ -401,6 +401,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
+        error!(?key, "************** Acquiring kademlia permit");
         let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
         error!(?key, "Starting 'GetClosestPeers' request.");
 
