@@ -34,7 +34,7 @@ use subspace_core_primitives::{
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
 use tokio::sync::Semaphore;
-use tracing::warn;
+use tracing::{warn, error};
 
 /// Get piece retry attempts number.
 const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(4).expect("Not zero; qed");
@@ -312,6 +312,8 @@ where
         })
         .collect::<FuturesUnordered<_>>();
 
+    error!("*********** Created segment retrieval future");
+
     let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
     let mut pieces_received = 0;
 
@@ -326,6 +328,8 @@ where
             .replace(piece);
 
         pieces_received += 1;
+
+        error!(%pieces_received, "*********** Received segment");
 
         if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
             trace!(%segment_index, "Received half of the segment.");
