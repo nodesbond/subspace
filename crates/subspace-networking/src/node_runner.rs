@@ -1383,7 +1383,10 @@ where
                 result_sender,
                 permit,
             } => {
-                error!(?key, "************** Handling get closest peer command");
+                error!(
+                    ?key,
+                    "CUSTOM_LOGS_FOR_DEBUG_AID Handling get closest peer command"
+                );
                 let query_id = self.swarm.behaviour_mut().kademlia.get_closest_peers(key);
 
                 self.query_id_receivers.insert(

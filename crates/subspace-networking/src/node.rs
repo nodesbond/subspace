@@ -401,9 +401,12 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
-        error!(?key, "************** Acquiring kademlia permit");
+        error!(?key, "CUSTOM_LOGS_FOR_DEBUG_AID Acquiring kademlia permit");
         let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
-        error!(?key, "************** Starting 'GetClosestPeers' request.");
+        error!(
+            ?key,
+            "CUSTOM_LOGS_FOR_DEBUG_AID Starting 'GetClosestPeers' request."
+        );
 
         let (result_sender, result_receiver) = mpsc::unbounded();
 

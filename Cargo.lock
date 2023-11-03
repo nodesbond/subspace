@@ -4140,6 +4140,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "futures-time"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49a618c62ac1f4520c5f957c37f03a5b39f26d87541f94e28ec0d32838c06296"
+dependencies = [
+ "async-channel",
+ "async-io",
+ "futures-core",
+ "pin-project-lite 0.2.13",
+]
+
+[[package]]
 name = "futures-timer"
 version = "3.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11812,6 +11824,7 @@ dependencies = [
  "domain-runtime-primitives",
  "frame-system-rpc-runtime-api",
  "futures",
+ "futures-time",
  "hex",
  "jsonrpsee",
  "pallet-transaction-payment-rpc",
@@ -12784,7 +12797,7 @@ checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
  "cfg-if",
  "digest 0.10.7",
- "rand 0.7.3",
+ "rand 0.8.5",
  "static_assertions",
 ]
 

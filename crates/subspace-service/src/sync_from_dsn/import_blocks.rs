@@ -169,7 +169,7 @@ where
             while block_number.saturating_sub(best_block_number) >= QUEUED_BLOCKS_LIMIT.into() {
                 if !blocks_to_import.is_empty() {
                     // Import queue handles verification and importing it into the client
-                    error!(%block_number, "************** Block import attempt happened.");
+                    error!(%block_number, "CUSTOM_LOGS_FOR_DEBUG_AID Block import attempt happened.");
                     import_queue_service
                         .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import.clone());
                     blocks_to_import.clear();
@@ -326,7 +326,7 @@ where
         })
         .collect::<FuturesUnordered<_>>();
 
-    error!("*********** Created segment retrieval future");
+    error!("CUSTOM_LOGS_FOR_DEBUG_AID Created segment retrieval future");
 
     let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
     let mut pieces_received = 0;
@@ -343,7 +343,7 @@ where
 
         pieces_received += 1;
 
-        error!(%pieces_received, "*********** Received segment");
+        error!(%pieces_received, "CUSTOM_LOGS_FOR_DEBUG_AID Received segment");
 
         if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
             trace!(%segment_index, "Received half of the segment.");
