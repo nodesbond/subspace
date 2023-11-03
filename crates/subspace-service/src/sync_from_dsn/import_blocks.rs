@@ -167,6 +167,7 @@ where
             while block_number.saturating_sub(best_block_number) >= QUEUED_BLOCKS_LIMIT.into() {
                 if !blocks_to_import.is_empty() {
                     // Import queue handles verification and importing it into the client
+                    error!(%block_number, "************** Block import attempt happened.");
                     import_queue_service
                         .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import.clone());
                     blocks_to_import.clear();
