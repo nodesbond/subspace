@@ -1,4 +1,6 @@
 use futures::StreamExt;
+use futures_time::future::FutureExt;
+use futures_time::time::Duration;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::error::Error;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
@@ -128,7 +130,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
             let peer_blocks: BTreeMap<PeerId, Vec<SegmentHeader>> = get_peers_stream
                 .filter_map(|peer_id| async move {
                     error!("Coming inside filter map");
-                    let request_result = self
+                    let timed_request_result = self
                         .dsn_node
                         .send_generic_request(
                             peer_id,
@@ -138,32 +140,41 @@ impl<'a> SegmentHeaderDownloader<'a> {
                                 segment_header_number: 2,
                             },
                         )
+                        .timeout(Duration::from_secs(20))
                         .await;
 
-                    match request_result {
-                        Ok(SegmentHeaderResponse { segment_headers }) => {
-                            trace!(
-                                %peer_id,
-                                segment_headers_number=%segment_headers.len(),
-                                "Last segment headers request succeeded"
-                            );
+                    match timed_request_result {
+                        Ok(request_result) => {
+                            match request_result {
+                                Ok(SegmentHeaderResponse { segment_headers }) => {
+                                    trace!(
+                                    %peer_id,
+                                    segment_headers_number=%segment_headers.len(),
+                                    "Last segment headers request succeeded"
+                                    );
 
-                            if !self
-                                .is_last_segment_headers_response_valid(peer_id, &segment_headers)
-                            {
-                                warn!(
+                                    if !self
+                                        .is_last_segment_headers_response_valid(peer_id, &segment_headers)
+                                    {
+                                        warn!(
                                     %peer_id,
                                     "Received last segment headers response was invalid"
                                 );
 
-                                let _ = self.dsn_node.ban_peer(peer_id).await;
-                                return None;
-                            }
+                                        let _ = self.dsn_node.ban_peer(peer_id).await;
+                                        return None;
+                                    }
 
-                            Some((peer_id, segment_headers))
-                        }
+                                    Some((peer_id, segment_headers))
+                                }
+                                Err(error) => {
+                                    error!(%peer_id, ?error, "Last segment headers request failed");
+                                    None
+                                }
+                            }
+                        },
                         Err(error) => {
-                            error!(%peer_id, ?error, "Last segment headers request failed");
+                            error!(%peer_id, ?error, "Last segment headers request timed out for the peer");
                             None
                         }
                     }

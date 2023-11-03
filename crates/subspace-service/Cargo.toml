@@ -21,6 +21,7 @@ atomic = "0.5.3"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 futures = "0.3.28"
+futures-time = "0.3"
 hex = "0.4.3"
 jsonrpsee = { version = "0.16.3", features = ["server"] }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }

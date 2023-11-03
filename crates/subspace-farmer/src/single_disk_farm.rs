@@ -736,7 +736,10 @@ impl SingleDiskFarm {
             }
         };
 
-        warn!("############## Target sector count we calculated is: {}", target_sector_count);
+        warn!(
+            "############## Target sector count we calculated is: {}",
+            target_sector_count
+        );
 
         // TODO: Consider file locking to prevent other apps from modifying it
         let mut metadata_file = OpenOptions::new()
@@ -824,8 +827,6 @@ impl SingleDiskFarm {
         );
 
         plot_file.advise_random_access()?;
-
-
 
         // Allocating the whole file (`set_len` below can create a sparse file, which will cause
         // writes to fail later)
