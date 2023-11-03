@@ -17,6 +17,8 @@
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
+use futures_time::future::FutureExt;
+use futures_time::time::Duration as FutureDuration;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
@@ -285,14 +287,25 @@ where
                         piece_index,
                         RetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
                     )
+                    .timeout(FutureDuration::from_secs(20))
                     .await
                 {
-                    Ok(maybe_piece) => maybe_piece,
+                    Ok(maybe_piece_request) => match maybe_piece_request {
+                        Ok(maybe_piece) => maybe_piece,
+                        Err(error) => {
+                            trace!(
+                                %error,
+                                ?piece_index,
+                                "Piece request failed",
+                            );
+                            return None;
+                        }
+                    },
                     Err(error) => {
                         trace!(
                             %error,
                             ?piece_index,
-                            "Piece request failed",
+                            "Piece request failed due to timeout",
                         );
                         return None;
                     }
