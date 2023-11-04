@@ -287,7 +287,7 @@ where
                         piece_index,
                         RetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
                     )
-                    .timeout(FutureDuration::from_secs(20))
+                    .timeout(FutureDuration::from_secs(60))
                     .await
                 {
                     Ok(maybe_piece_request) => match maybe_piece_request {

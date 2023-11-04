@@ -140,7 +140,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                                 segment_header_number: 2,
                             },
                         )
-                        .timeout(Duration::from_secs(20))
+                        .timeout(Duration::from_secs(60))
                         .await;
 
                     match timed_request_result {
