@@ -129,7 +129,7 @@ where
     Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
-    crate::BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    crate::BalanceOf<Runtime>: Send + Sync + From<u64> + From<u128> + sp_runtime::FixedPointOperand,
     u64: From<BlockNumberFor<Runtime>>,
     RuntimeApi:
         ConstructRuntimeApi<Block, Client<RuntimeApi, ExecutorDispatch>> + Send + Sync + 'static,
@@ -353,7 +353,7 @@ where
     pub fn construct_extrinsic_with_tip(
         &mut self,
         nonce: u32,
-        tip: u32,
+        tip: u128,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> UncheckedExtrinsicFor<Runtime> {
         construct_extrinsic_generic::<Runtime, _>(

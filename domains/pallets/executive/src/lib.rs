@@ -437,7 +437,7 @@ where
         // TODO: Critical!!! https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
         log::info!(
             target: "domain::runtime::executive",
-            "[apply_extrinsic] after: {:?}",
+            "[apply_extrinsic] after: {:?}, res {res:?}",
             {
                 use codec::Decode;
                 Block::Hash::decode(&mut Self::storage_root().as_slice()).unwrap()

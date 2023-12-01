@@ -177,13 +177,13 @@ pub fn construct_extrinsic_generic<Runtime, Client>(
     caller: EcdsaKeyring,
     immortal: bool,
     nonce: u32,
-    tip: u32,
+    tip: u128,
 ) -> UncheckedExtrinsicFor<Runtime>
 where
     Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
-    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    BalanceOf<Runtime>: Send + Sync + From<u64> + From<u128> + sp_runtime::FixedPointOperand,
     u64: From<BlockNumberFor<Runtime>>,
     Client: HeaderBackend<Block>,
 {
@@ -234,7 +234,7 @@ where
     Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
-    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    BalanceOf<Runtime>: Send + Sync + From<u64> + From<u128> + sp_runtime::FixedPointOperand,
 {
     let function = function.into();
     UncheckedExtrinsicFor::<Runtime>::new_unsigned(function)

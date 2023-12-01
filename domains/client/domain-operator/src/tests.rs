@@ -286,6 +286,152 @@ async fn test_processing_empty_consensus_block() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_failed_domain_extrinsic() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let pre_alice_free_balance = alice.free_balance(Alice.to_account_id());
+    let pre_bob_free_balance = alice.free_balance(Bob.to_account_id());
+    let alice_account_nonce = alice.account_nonce();
+    for i in 0..5 {
+        // All the tx will be failed during execution and no fund is transferred
+        let tx = alice.construct_extrinsic(
+            alice_account_nonce + i,
+            pallet_balances::Call::transfer_allow_death {
+                dest: Bob.to_account_id(),
+                value: pre_alice_free_balance * 2,
+            },
+        );
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+    }
+    // Produce a bundle that included all of the previous tx
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // The account nonce is increased
+    assert_eq!(bundle.unwrap().extrinsics.len(), 5);
+    assert_eq!(alice.account_nonce(), alice_account_nonce + 5);
+    let consensus_best_hash = ferdie.client.info().best_hash;
+
+    // Get the receipt of the previous bundle
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.unwrap().into_receipt();
+
+    // The failed extrinsic is included in the `execution_trace`
+    assert_eq!(receipt.consensus_block_hash, consensus_best_hash);
+    assert_eq!(receipt.execution_trace.len(), 8);
+
+    // The balance of Bob is unchanged while only the tx fee is deducted from Alice's
+    assert!(alice.free_balance(Alice.to_account_id()) > pre_alice_free_balance / 10 * 9);
+    assert_eq!(alice.free_balance(Bob.to_account_id()), pre_bob_free_balance);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_failed_domain_extrinsic_tip() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let pre_alice_free_balance = alice.free_balance(Alice.to_account_id());
+    let pre_bob_free_balance = alice.free_balance(Bob.to_account_id());
+    let alice_account_nonce = alice.account_nonce();
+    let mut txs = vec![];
+    for i in 0..5 {
+        // The tx fee check (included tip) is happen in `pre_dispatch` thus the 3rd tx and
+        // the following tx will be failed before execution
+        let tx: OpaqueExtrinsic = alice
+            .construct_extrinsic_with_tip(
+                alice_account_nonce + i,
+                pre_alice_free_balance / 3,
+                pallet_balances::Call::transfer_allow_death {
+                    dest: Bob.to_account_id(),
+                    value: 1,
+                },
+            )
+            .into();
+        txs.push(tx.clone());
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+    }
+
+    // Produce a bundle that included all of the previous tx
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // The account nonce is only increased for the first 2 succeeded extrinsics
+    assert_eq!(bundle.unwrap().extrinsics.len(), 5);
+    assert_eq!(alice.account_nonce(), alice_account_nonce + 2);
+    let consensus_best_hash = ferdie.client.info().best_hash;
+
+    // Get the receipt of the previous bundle
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.unwrap().into_receipt();
+
+    // Only the first 2 succeeded extrinsics is included in `execution_trace`
+    assert_eq!(receipt.consensus_block_hash, consensus_best_hash);
+    assert_eq!(receipt.execution_trace.len(), 5);
+
+    // The balance of Alice is reduced by: pre_alice_free_balance * 2/3 (tx tip) + 2 + tx fee
+    // The balance of Alice is increased by 2
+    assert!(alice.free_balance(Alice.to_account_id()) < pre_alice_free_balance / 3);
+    assert_eq!(alice.free_balance(Bob.to_account_id()), pre_bob_free_balance + 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_domain_block_deriving_from_multiple_bundles() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 

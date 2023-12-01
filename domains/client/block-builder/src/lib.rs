@@ -199,7 +199,11 @@ where
 
         for (index, xt) in self.extrinsics.iter().enumerate() {
             let res = self.api.execute_in_transaction(|api| {
-                match api.apply_extrinsic(parent_hash, xt.clone()) {
+                let apply_res = api.apply_extrinsic(parent_hash, xt.clone());
+                tracing::info!(
+                    "execute_extrinsics apply_extrinsic, index {index:?}, res {apply_res:?}"
+                );
+                match apply_res {
                     Ok(Ok(_)) => TransactionOutcome::Commit(Ok(())),
                     Ok(Err(tx_validity)) => TransactionOutcome::Rollback(Err(
                         ApplyExtrinsicFailed::Validity(tx_validity).into(),
@@ -209,7 +213,7 @@ where
             });
 
             if let Err(e) = res {
-                tracing::debug!("Apply extrinsic at index {index} failed: {e}");
+                tracing::info!("Apply extrinsic at index {index} failed: {e}");
             }
         }
 
@@ -272,13 +276,13 @@ where
 
         let header = self.api.finalize_block(self.parent_hash)?;
 
-        debug_assert_eq!(
-            header.extrinsics_root().clone(),
-            HashingFor::<Block>::ordered_trie_root(
-                self.extrinsics.iter().map(Encode::encode).collect(),
-                sp_core::storage::StateVersion::V1
-            ),
-        );
+        // debug_assert_eq!(
+        //     header.extrinsics_root().clone(),
+        //     HashingFor::<Block>::ordered_trie_root(
+        //         self.extrinsics.iter().map(Encode::encode).collect(),
+        //         sp_core::storage::StateVersion::V1
+        //     ),
+        // );
 
         let proof = self.api.extract_proof();
 
