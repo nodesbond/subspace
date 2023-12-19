@@ -1,0 +1,152 @@
+##
+# This action runs trivy container scanning and anchore grype vulnerability
+# scanner for docker images and packages.
+##
+
+name: sec-scan
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "snapshot-*"
+      - "gemini-*"
+  pull_request:
+    branches: "main"
+  schedule:
+    - cron: "40 14 * * 0"
+
+jobs:
+  trivy_scan_job:
+    strategy:
+      matrix:
+        build:
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
+            target: x86_64-unknown-linux-gnu
+            suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
+            rustflags: "-C target-cpu=skylake"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
+            target: x86_64-unknown-linux-gnu
+            suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
+            rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
+            target: aarch64-unknown-linux-gnu
+            suffix: ubuntu-aarch64-${{ github.ref_name }}
+            # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
+            #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
+            rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
+            target: aarch64-apple-darwin
+            suffix: macos-aarch64-${{ github.ref_name }}
+            # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
+            #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
+            rustflags: "--cfg aes_armv8"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
+            target: x86_64-apple-darwin
+            suffix: macos-x86_64-${{ github.ref_name }}
+            rustflags: ""
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
+            target: x86_64-pc-windows-msvc
+            suffix: windows-x86_64-skylake-${{ github.ref_name }}
+            rustflags: "-C target-cpu=skylake"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
+            target: x86_64-pc-windows-msvc
+            suffix: windows-x86_64-v2-${{ github.ref_name }}
+            rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
+
+    name: Build Image
+    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-22.04') }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Build an image from Dockerfile
+        run: |
+          docker build -t ghcr.io/subspace/${{ matrix.build.suffix }}:${{ github.sha }} .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "ghcr.io/subspace/${{ matrix.build.suffix }}:${{ github.sha }}"
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
+  anchore_scan_job:
+    strategy:
+      matrix:
+        build:
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
+            target: x86_64-unknown-linux-gnu
+            suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
+            rustflags: "-C target-cpu=skylake"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
+            target: x86_64-unknown-linux-gnu
+            suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
+            rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
+            target: aarch64-unknown-linux-gnu
+            suffix: ubuntu-aarch64-${{ github.ref_name }}
+            # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
+            #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
+            rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
+            target: aarch64-apple-darwin
+            suffix: macos-aarch64-${{ github.ref_name }}
+            # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
+            #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
+            rustflags: "--cfg aes_armv8"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
+            target: x86_64-apple-darwin
+            suffix: macos-x86_64-${{ github.ref_name }}
+            rustflags: ""
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
+            target: x86_64-pc-windows-msvc
+            suffix: windows-x86_64-skylake-${{ github.ref_name }}
+            rustflags: "-C target-cpu=skylake"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
+            target: x86_64-pc-windows-msvc
+            suffix: windows-x86_64-v2-${{ github.ref_name }}
+            rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
+
+    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-22.04') }}
+    name: Anchore grype security scan
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Scan current project
+        id: scan
+        uses: anchore/scan-action@v2
+        with:
+          path: "./"
+          fail-build: true
+          acs-report-enable: true
+
+      - name: upload Anchore scan SARIF report
+        uses: github/codeql-action/upload-sarif@v1
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: build local container
+        uses: docker/build-push-action@v2
+        with:
+          tags: ghcr.io/subspace/${{ matrix.build.suffix }}:${{ github.sha }}
+          push: false
+          load: true
+
+      - name: Scan image
+        uses: anchore/scan-action@v3
+        id: imagescan
+        with:
+          image: "ghcr.io/subspace/${{ matrix.build.suffix }}:${{ github.sha }}"
+          acs-report-enable: "true"
+          fail-build: false
+
+      - name: upload Anchore Image scan SARIF report
+        uses: github/codeql-action/upload-sarif@v1
+        with:
+          sarif_file: ${{ steps.imagescan.outputs.sarif }}
