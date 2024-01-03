@@ -27,8 +27,7 @@ pub use subspace_core_primitives::BlockNumber;
 
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
 /// impacts storage fees.
-// TODO: Proper value here
-pub const MIN_REPLICATION_FACTOR: u16 = 1;
+pub const MIN_REPLICATION_FACTOR: u16 = 50;
 /// How much (ratio) of storage fees escrow should be given to farmer each block as a reward.
 // TODO: Proper value here
 pub const STORAGE_FEES_ESCROW_BLOCK_REWARD: (u64, u64) = (1, 10000);
@@ -184,7 +183,7 @@ pub mod tests_utils {
             // if the min is too small, then this will not change, and we are doomed forever.
             // the block ref time is 1/100th bigger than target.
             Self::run_with_system_weight(
-                Self::target().set_ref_time(Self::target().ref_time() * 101 / 100),
+                Self::target().set_ref_time((Self::target().ref_time() / 100) * 101),
                 || {
                     let next = Self::runtime_multiplier_update(Self::min_multiplier());
                     assert!(

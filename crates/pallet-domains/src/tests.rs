@@ -10,11 +10,12 @@ use crate::{
 use codec::{Decode, Encode, MaxEncodedLen};
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
-use frame_support::dispatch::RawOrigin;
+use frame_support::dispatch::{DispatchInfo, RawOrigin};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
 use frame_support::weights::constants::RocksDbWeight;
-use frame_support::weights::Weight;
+use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
+use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
@@ -72,6 +73,7 @@ frame_support::construct_runtime!(
 
 type BlockNumber = u64;
 type Hash = H256;
+type AccountId = u64;
 
 parameter_types! {
     pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
@@ -87,7 +89,7 @@ impl frame_system::Config for Test {
     type Nonce = u64;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
-    type AccountId = u64;
+    type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Block = Block;
     type RuntimeEvent = RuntimeEvent;
@@ -191,6 +193,7 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
     pub const MinOperatorStake: Balance = 100 * SSC;
+    pub const MinNominatorStake: Balance = SSC;
     pub const StakeWithdrawalLockingPeriod: DomainBlockNumber = 5;
     pub const StakeEpochDuration: DomainBlockNumber = 5;
     pub TreasuryAccount: u64 = PalletId(*b"treasury").into_account_truncating();
@@ -228,6 +231,7 @@ impl pallet_domains::Config for Test {
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type MinOperatorStake = MinOperatorStake;
+    type MinNominatorStake = MinNominatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
     type MaxBundlesPerBlock = MaxBundlesPerBlock;
@@ -244,9 +248,21 @@ impl pallet_domains::Config for Test {
     type SudoId = ();
 }
 
+pub struct ExtrinsicStorageFees;
+impl domain_pallet_executive::ExtrinsicStorageFees<Test> for ExtrinsicStorageFees {
+    fn extract_signer(_xt: MockUncheckedExtrinsic<Test>) -> (Option<AccountId>, DispatchInfo) {
+        (None, DispatchInfo::default())
+    }
+
+    fn on_storage_fees_charged(_charged_fees: Balance) {}
+}
+
 impl domain_pallet_executive::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
+    type Currency = Balances;
+    type LengthToFee = IdentityFee<Balance>;
+    type ExtrinsicStorageFees = ExtrinsicStorageFees;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
@@ -266,6 +282,7 @@ pub(crate) struct MockDomainFraudProofExtension {
     domain_total_stake: Balance,
     bundle_slot_probability: (u64, u64),
     operator_stake: Balance,
+    maybe_illegal_extrinsic_index: Option<u32>,
 }
 
 impl FraudProofHostFunctions for MockDomainFraudProofExtension {
@@ -322,6 +339,11 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
             }
             FraudProofVerificationInfoRequest::OperatorStake { .. } => {
                 FraudProofVerificationInfoResponse::OperatorStake(self.operator_stake)
+            }
+            FraudProofVerificationInfoRequest::CheckExtrinsicsInSingleContext { .. } => {
+                FraudProofVerificationInfoResponse::CheckExtrinsicsInSingleContext(
+                    self.maybe_illegal_extrinsic_index,
+                )
             }
         };
 
@@ -1013,6 +1035,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         domain_total_stake: 100 * SSC,
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
+        maybe_illegal_extrinsic_index: None,
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1092,6 +1115,7 @@ fn test_true_invalid_bundles_inherent_extrinsic_proof() {
         domain_total_stake: 100 * SSC,
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
+        maybe_illegal_extrinsic_index: None,
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1157,6 +1181,7 @@ fn test_false_invalid_bundles_inherent_extrinsic_proof() {
         domain_total_stake: 100 * SSC,
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
+        maybe_illegal_extrinsic_index: None,
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1184,7 +1209,7 @@ fn generate_invalid_bundle_inherent_extrinsic_fraud_proof<T: Config>(
         bad_receipt_hash,
         bundle_index,
         invalid_bundle_type: InvalidBundleType::InherentExtrinsic(bundle_extrinsic_index),
-        extrinsic_inclusion_proof,
+        proof_data: extrinsic_inclusion_proof,
         is_true_invalid_fraud_proof,
     })
 }

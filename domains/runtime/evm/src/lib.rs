@@ -10,20 +10,22 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::Header;
-pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Nonce};
-use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
+pub use domain_runtime_primitives::{
+    block_weights, maximum_block_length, opaque, Balance, BlockNumber, Hash, Nonce,
+    EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT,
+};
+use domain_runtime_primitives::{
+    CheckExtrinsicsValidityError, MultiAccountId, TryConvertBack, SLOT_DURATION,
+};
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
-use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
+use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
     OnUnbalanced,
 };
-use frame_support::weights::constants::{
-    BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
-    WEIGHT_REF_TIME_PER_SECOND,
-};
+use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
@@ -62,7 +64,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{Moment, SlowAdjustingFeeUpdate, SHANNON};
+use subspace_runtime_primitives::{Moment, SlowAdjustingFeeUpdate};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -109,11 +111,9 @@ pub type CheckedExtrinsic =
 /// Executive: handles dispatch to the various modules.
 pub type Executive = domain_pallet_executive::Executive<
     Runtime,
-    Block,
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    Runtime,
 >;
 
 impl fp_self_contained::SelfContainedCall for RuntimeCall {
@@ -193,30 +193,32 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     state_version: 0,
 };
 
-/// The existential deposit. Same with the one on primary chain.
-pub const EXISTENTIAL_DEPOSIT: Balance = 500 * SHANNON;
-
-/// We assume that ~5% of the block weight is consumed by `on_initialize` handlers. This is
-/// used to limit the maximal weight of a single extrinsic.
-const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
-
-/// We allow `Normal` extrinsics to fill up the block up to 75%, the rest can be used by
-/// `Operational` extrinsics.
-const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
-/// We allow for 2000ms of compute with a 6 second average block time.
-pub const WEIGHT_MILLISECS_PER_BLOCK: u64 = 2000;
-pub const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::from_parts(
-    WEIGHT_MILLISECS_PER_BLOCK * WEIGHT_REF_TIME_PER_MILLIS,
-    u64::MAX,
-);
-pub const MAXIMUM_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
-
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
 pub fn native_version() -> NativeVersion {
     NativeVersion {
         runtime_version: VERSION,
         can_author_with: Default::default(),
+    }
+}
+
+/// EVM domain executor instance.
+#[cfg(feature = "std")]
+pub struct ExecutorDispatch;
+
+#[cfg(feature = "std")]
+impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        native_version()
     }
 }
 
@@ -228,26 +230,8 @@ parameter_types! {
     //  The `RuntimeBlockLength` and `RuntimeBlockWeights` exist here because the
     // `DeletionWeightLimit` and `DeletionQueueDepth` depend on those to parameterize
     // the lazy contract deletion.
-    pub RuntimeBlockLength: BlockLength =
-        BlockLength::max_with_normal_ratio(5 * 1024 * 1024, NORMAL_DISPATCH_RATIO);
-    pub RuntimeBlockWeights: BlockWeights = BlockWeights::builder()
-        .base_block(BlockExecutionWeight::get())
-        .for_class(DispatchClass::all(), |weights| {
-            weights.base_extrinsic = ExtrinsicBaseWeight::get();
-        })
-        .for_class(DispatchClass::Normal, |weights| {
-            weights.max_total = Some(NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT);
-        })
-        .for_class(DispatchClass::Operational, |weights| {
-            weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
-            // Operational transactions have some extra reserved space, so that they
-            // are included even if block reached `MAXIMUM_BLOCK_WEIGHT`.
-            weights.reserved = Some(
-                MAXIMUM_BLOCK_WEIGHT - NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT
-            );
-        })
-        .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
-        .build_or_panic();
+    pub RuntimeBlockLength: BlockLength = maximum_block_length();
+    pub RuntimeBlockWeights: BlockWeights = block_weights();
     pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V1;
 }
 
@@ -364,9 +348,26 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
+pub struct ExtrinsicStorageFees;
+impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorageFees {
+    fn extract_signer(xt: UncheckedExtrinsic) -> (Option<AccountId>, DispatchInfo) {
+        let dispatch_info = xt.get_dispatch_info();
+        let lookup = frame_system::ChainContext::<Runtime>::default();
+        let maybe_signer = extract_signer_inner(&xt, &lookup).and_then(|res| res.ok());
+        (maybe_signer, dispatch_info)
+    }
+
+    fn on_storage_fees_charged(charged_fees: Balance) {
+        OperatorRewards::note_operator_rewards(charged_fees)
+    }
+}
+
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = domain_pallet_executive::weights::SubstrateWeight<Runtime>;
+    type Currency = Balances;
+    type LengthToFee = <Runtime as pallet_transaction_payment::Config>::LengthToFee;
+    type ExtrinsicStorageFees = ExtrinsicStorageFees;
 }
 
 impl pallet_sudo::Config for Runtime {
@@ -463,8 +464,6 @@ impl FindAuthor<H160> for FindAuthorTruncated {
 
 /// Current approximation of the gas/s consumption considering
 /// EVM execution over compiled WASM (on 4.4Ghz CPU).
-/// Given the 500ms Weight, from which 75% only are used for transactions,
-/// the total EVM execution gas limit is: GAS_PER_SECOND * 0.500 * 0.75 ~= 15_000_000.
 pub const GAS_PER_SECOND: u64 = 40_000_000;
 
 /// Approximate ratio of the amount of Weight per Gas.
@@ -472,9 +471,9 @@ pub const GAS_PER_SECOND: u64 = 40_000_000;
 pub const WEIGHT_PER_GAS: u64 = WEIGHT_REF_TIME_PER_SECOND.saturating_div(GAS_PER_SECOND);
 
 parameter_types! {
-    /// EVM gas limit
+    /// EVM block gas limit is set to maximum to allow all the transaction stored on Consensus chain.
     pub BlockGasLimit: U256 = U256::from(
-        NORMAL_DISPATCH_RATIO * MAXIMUM_BLOCK_WEIGHT.ref_time() / WEIGHT_PER_GAS
+        MAXIMUM_BLOCK_WEIGHT.ref_time() / WEIGHT_PER_GAS
     );
     pub PrecompilesValue: Precompiles = Precompiles::default();
     pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
@@ -725,6 +724,42 @@ mod benches {
     );
 }
 
+fn check_transaction_and_do_pre_dispatch_inner(
+    uxt: &<Block as BlockT>::Extrinsic,
+) -> Result<(), TransactionValidityError> {
+    let lookup = frame_system::ChainContext::<Runtime>::default();
+
+    let xt = uxt.clone().check(&lookup)?;
+
+    let dispatch_info = xt.get_dispatch_info();
+
+    if dispatch_info.class == DispatchClass::Mandatory {
+        return Err(InvalidTransaction::MandatoryValidation.into());
+    }
+
+    let encoded_len = uxt.encoded_size();
+
+    // We invoke `pre_dispatch` in addition to `validate_transaction`(even though the validation is almost same)
+    // as that will add the side effect of SignedExtension in the storage buffer
+    // which would help to maintain context across multiple transaction validity check against same
+    // runtime instance.
+    match xt.signed {
+        CheckedSignature::Signed(account_id, extra) => extra
+            .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
+            .map(|_| ()),
+        CheckedSignature::Unsigned => {
+            Runtime::pre_dispatch(&xt.function).map(|_| ())?;
+            SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len)
+                .map(|_| ())
+        }
+        CheckedSignature::SelfContained(self_contained_signing_info) => xt
+            .function
+            .pre_dispatch_self_contained(&self_contained_signing_info, &dispatch_info, encoded_len)
+            .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))
+            .map(|_| ()),
+    }
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -895,13 +930,8 @@ impl_runtime_apis! {
             }
         }
 
-        fn check_transaction_and_do_pre_dispatch(
-            uxt: &<Block as BlockT>::Extrinsic,
-            block_number: BlockNumber,
-            block_hash: <Block as BlockT>::Hash
-        ) -> Result<(), TransactionValidityError> {
-            let lookup = frame_system::ChainContext::<Runtime>::default();
-
+        fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<<Block as BlockT>::Extrinsic>, block_number: BlockNumber,
+            block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError> {
             // Initializing block related storage required for validation
             System::initialize(
                 &(block_number + BlockNumber::one()),
@@ -909,34 +939,16 @@ impl_runtime_apis! {
                 &Default::default(),
             );
 
-            let xt = uxt.clone().check(&lookup)?;
-
-            let dispatch_info = xt.get_dispatch_info();
-
-            if dispatch_info.class == DispatchClass::Mandatory {
-                return Err(InvalidTransaction::BadMandatory.into());
+            for (extrinsic_index, uxt) in uxts.iter().enumerate() {
+                check_transaction_and_do_pre_dispatch_inner(uxt).map_err(|e| {
+                    CheckExtrinsicsValidityError {
+                        extrinsic_index: extrinsic_index as u32,
+                        transaction_validity_error: e
+                    }
+                })?;
             }
 
-            let encoded_len = uxt.encoded_size();
-
-            // We invoke `pre_dispatch` in addition to `validate_transaction`(even though the validation is almost same)
-            // as that will add the side effect of SignedExtension in the storage buffer
-            // which would help to maintain context across multiple transaction validity check against same
-            // runtime instance.
-            match xt.signed {
-                    CheckedSignature::Signed(account_id, extra) => {
-                        extra.pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len).map(|_| ())
-                    },
-                    CheckedSignature::Unsigned => {
-                        Runtime::pre_dispatch(&xt.function).map(|_| ())?;
-                        SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len).map(|_| ())
-                    },
-                    CheckedSignature::SelfContained(self_contained_signing_info) => {
-                        xt.function.pre_dispatch_self_contained(&self_contained_signing_info, &dispatch_info, encoded_len).ok_or(TransactionValidityError::Invalid(
-                            InvalidTransaction::Call,
-                        )).map(|_| ())
-                    }
-                }
+            Ok(())
         }
 
         fn extrinsic_era(

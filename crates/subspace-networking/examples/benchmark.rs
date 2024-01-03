@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::PieceIndex;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, RetryPolicy};
-use subspace_networking::{Config, Node, PeerInfoProvider, PieceByIndexRequestHandler};
+use subspace_networking::{Config, Node, PieceByIndexRequestHandler};
 use tokio::sync::Semaphore;
 use tracing::{error, info, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
@@ -157,7 +157,7 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retr
         let piece_index = PieceIndex::from(i as u64);
         let start = Instant::now();
         let piece = piece_provider
-            .get_piece(piece_index, RetryPolicy::Limited(retries))
+            .get_piece_from_dsn_cache(piece_index, RetryPolicy::Limited(retries))
             .await;
         let end = Instant::now();
         let duration = end.duration_since(start);
@@ -220,7 +220,7 @@ async fn parallel_benchmark(
                     .expect("Semaphore cannot be closed.");
                 let semaphore_acquired = Instant::now();
                 let maybe_piece = piece_provider
-                    .get_piece(piece_index, RetryPolicy::Limited(retries))
+                    .get_piece_from_dsn_cache(piece_index, RetryPolicy::Limited(retries))
                     .await;
 
                 let end = Instant::now();
@@ -281,13 +281,7 @@ pub async fn configure_dsn(
 ) -> Node {
     let keypair = Keypair::generate_ed25519();
 
-    let default_config = Config::new(
-        protocol_prefix,
-        keypair,
-        (),
-        Some(PeerInfoProvider::Client),
-        None,
-    );
+    let default_config = Config::new(protocol_prefix, keypair, (), None);
 
     let config = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],

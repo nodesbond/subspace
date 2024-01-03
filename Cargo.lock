@@ -2759,6 +2759,8 @@ dependencies = [
 name = "domain-runtime-primitives"
 version = "0.1.0"
 dependencies = [
+ "frame-support",
+ "frame-system",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
@@ -3281,6 +3283,7 @@ dependencies = [
  "pallet-transaction-payment-rpc-runtime-api",
  "pallet-transporter",
  "parity-scale-codec",
+ "sc-executor",
  "scale-info",
  "sp-api",
  "sp-block-builder",
@@ -4084,6 +4087,16 @@ name = "fs4"
 version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2eeb4ed9e12f43b7fa0baae3f9cdda28352770132ef2e09a23760c29cae8bd47"
+dependencies = [
+ "rustix 0.38.13",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "fs4"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29f9df8a11882c4e3335eb2d18a0137c505d9ca927470b0cac9c6f0ae07d28f7"
 dependencies = [
  "rustix 0.38.13",
  "windows-sys 0.48.0",
@@ -9957,7 +9970,7 @@ version = "0.1.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=0831dfc3c54b10ab46e82acf98603b4af1a47bd5#0831dfc3c54b10ab46e82acf98603b4af1a47bd5"
 dependencies = [
  "clap",
- "fs4",
+ "fs4 0.6.6",
  "log",
  "sc-client-db",
  "sp-core",
@@ -10987,13 +11000,21 @@ dependencies = [
  "domain-block-preprocessor",
  "domain-runtime-primitives",
  "domain-test-service",
+ "ethereum",
+ "fp-rpc",
+ "fp-self-contained",
  "frame-support",
  "frame-system",
  "futures",
  "hash-db 0.16.0",
+ "libsecp256k1",
  "log",
  "pallet-balances",
+ "pallet-ethereum",
+ "pallet-evm",
  "parity-scale-codec",
+ "rand 0.8.5",
+ "rlp",
  "sc-cli",
  "sc-client-api",
  "sc-executor",
@@ -11691,6 +11712,7 @@ dependencies = [
  "derive_more",
  "event-listener-primitives",
  "fdlimit",
+ "fs4 0.7.0",
  "futures",
  "hex",
  "jsonrpsee",
@@ -11993,6 +12015,7 @@ dependencies = [
  "pallet-transporter",
  "pallet-utility",
  "parity-scale-codec",
+ "sc-executor",
  "scale-info",
  "sp-api",
  "sp-block-builder",
@@ -13014,7 +13037,7 @@ checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
  "cfg-if",
  "digest 0.10.7",
- "rand 0.7.3",
+ "rand 0.8.5",
  "static_assertions",
 ]
 

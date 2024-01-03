@@ -9,7 +9,7 @@ use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
-    farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
+    farming, slot_notification_forwarder, AuditEvent, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
@@ -40,6 +40,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fs, io, mem};
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -63,12 +64,13 @@ use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
-const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
+const_assert!(mem::size_of::<usize>() >= mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Reserve 1M of space for farm info (for potential future expansion)
 const RESERVED_FARM_INFO: u64 = 1024 * 1024;
+const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
 
 /// An identifier for single disk farm, can be used for in logs, thread names, etc.
 #[derive(
@@ -86,6 +88,12 @@ impl SingleDiskFarmId {
     pub fn new() -> Self {
         Self::Ulid(Ulid::new())
     }
+}
+
+/// Exclusive lock for single disk farm info file, ensuring no concurrent edits by cooperating processes is done
+#[must_use = "Lock file must be kept around or as long as farm is used"]
+pub struct SingleDiskFarmInfoLock {
+    _file: File,
 }
 
 /// Important information about the contents of the `SingleDiskFarm`
@@ -162,6 +170,15 @@ impl SingleDiskFarmInfo {
         )
     }
 
+    /// Try to acquire exclusive lock on the single disk farm info file, ensuring no concurrent edits by cooperating
+    /// processes is done
+    pub fn try_lock(directory: &Path) -> io::Result<SingleDiskFarmInfoLock> {
+        let file = File::open(directory.join(Self::FILE_NAME))?;
+        fs4::FileExt::try_lock_exclusive(&file)?;
+
+        Ok(SingleDiskFarmInfoLock { _file: file })
+    }
+
     // ID of the farm
     pub fn id(&self) -> &SingleDiskFarmId {
         let Self::V0 { id, .. } = self;
@@ -198,6 +215,7 @@ impl SingleDiskFarmInfo {
 }
 
 /// Summary of single disk farm for presentational purposes
+#[derive(Debug)]
 pub enum SingleDiskFarmSummary {
     /// Farm was found and read successfully
     Found {
@@ -287,6 +305,9 @@ pub enum SingleDiskFarmError {
     /// Failed to open or create identity
     #[error("Failed to open or create identity: {0}")]
     FailedToOpenIdentity(#[from] IdentityError),
+    /// Farm is likely already in use, make sure no other farmer is using it
+    #[error("Farm is likely already in use, make sure no other farmer is using it: {0}")]
+    LikelyAlreadyInUse(io::Error),
     // TODO: Make more variants out of this generic one
     /// I/O error occurred
     #[error("I/O error: {0}")]
@@ -378,6 +399,9 @@ pub enum SingleDiskFarmError {
 /// Errors happening during scrubbing
 #[derive(Debug, Error)]
 pub enum SingleDiskFarmScrubError {
+    /// Farm is likely already in use, make sure no other farmer is using it
+    #[error("Farm is likely already in use, make sure no other farmer is using it: {0}")]
+    LikelyAlreadyInUse(io::Error),
     /// Failed to determine file size
     #[error("Failed to file size of {file}: {error}")]
     FailedToDetermineFileSize {
@@ -536,6 +560,7 @@ struct Handlers {
     sector_plotting: Handler<SectorPlottingDetails>,
     sector_plotted: Handler<(PlottedSector, Option<PlottedSector>)>,
     solution: Handler<SolutionResponse>,
+    plot_audited: Handler<AuditEvent>,
 }
 
 /// Single disk farm abstraction is a container for everything necessary to plot/farm with a single
@@ -549,6 +574,7 @@ pub struct SingleDiskFarm {
     /// Metadata of all sectors plotted so far
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pieces_in_sector: u16,
+    total_sectors_count: SectorIndex,
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
     handlers: Arc<Handlers>,
@@ -558,6 +584,7 @@ pub struct SingleDiskFarm {
     start_sender: Option<broadcast::Sender<()>>,
     /// Sender that will be used to signal to background threads that they must stop
     stop_sender: Option<broadcast::Sender<()>>,
+    _single_disk_farm_info_lock: SingleDiskFarmInfoLock,
 }
 
 impl Drop for SingleDiskFarm {
@@ -682,6 +709,10 @@ impl SingleDiskFarm {
                 single_disk_farm_info
             }
         };
+        let farm_id = *single_disk_farm_info.id();
+
+        let single_disk_farm_info_lock = SingleDiskFarmInfo::try_lock(&directory)
+            .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?;
 
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
         let sector_size = sector_size(pieces_in_sector);
@@ -744,7 +775,6 @@ impl SingleDiskFarm {
             }
         };
 
-        // TODO: Consider file locking to prevent other apps from modifying it
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -1010,6 +1040,7 @@ impl SingleDiskFarm {
             sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
             initial_plotting_finished: farming_delay_sender,
+            new_segment_processing_delay: NEW_SEGMENT_PROCESSING_DELAY,
         };
         tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
 
@@ -1092,6 +1123,7 @@ impl SingleDiskFarm {
                             handlers,
                             modifying_sector_index,
                             slot_info_notifications: slot_info_forwarder_receiver,
+                            farm_id,
                         };
                         farming::<PosTable, _, _>(farming_options).await
                     };
@@ -1186,6 +1218,7 @@ impl SingleDiskFarm {
             single_disk_farm_info,
             sectors_metadata,
             pieces_in_sector,
+            total_sectors_count: target_sector_count,
             span,
             tasks,
             handlers,
@@ -1193,6 +1226,7 @@ impl SingleDiskFarm {
             piece_reader,
             start_sender: Some(start_sender),
             stop_sender: Some(stop_sender),
+            _single_disk_farm_info_lock: single_disk_farm_info_lock,
         };
 
         Ok(farm)
@@ -1275,6 +1309,16 @@ impl SingleDiskFarm {
         self.single_disk_farm_info.id()
     }
 
+    /// Info of this farm
+    pub fn info(&self) -> &SingleDiskFarmInfo {
+        &self.single_disk_farm_info
+    }
+
+    /// Number of sectors in this farm
+    pub fn total_sectors_count(&self) -> SectorIndex {
+        self.total_sectors_count
+    }
+
     /// Number of sectors successfully plotted so far
     pub async fn plotted_sectors_count(&self) -> usize {
         self.sectors_metadata.read().await.len()
@@ -1336,6 +1380,11 @@ impl SingleDiskFarm {
         callback: HandlerFn<(PlottedSector, Option<PlottedSector>)>,
     ) -> HandlerId {
         self.handlers.sector_plotted.add(callback)
+    }
+
+    /// Subscribe to notification about audited plots
+    pub fn on_plot_audited(&self, callback: HandlerFn<AuditEvent>) -> HandlerId {
+        self.handlers.plot_audited.add(callback)
     }
 
     /// Subscribe to new solution notification
@@ -1439,6 +1488,10 @@ impl SingleDiskFarm {
                 }
             }
         };
+
+        let _single_disk_farm_info_lock = SingleDiskFarmInfo::try_lock(directory)
+            .map_err(SingleDiskFarmScrubError::LikelyAlreadyInUse)?;
+
         let identity = {
             let file = directory.join(Identity::FILE_NAME);
             info!(path = %file.display(), "Checking identity file");

@@ -17,16 +17,19 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use frame_support::dispatch::{DispatchClass, PerDispatchClass};
+use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight};
+use frame_system::limits::{BlockLength, BlockWeights};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::generic::{Era, UncheckedExtrinsic};
 use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, NumberFor, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
-use sp_runtime::{Digest, MultiAddress, MultiSignature};
+use sp_runtime::{Digest, MultiAddress, MultiSignature, Perbill};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::U256;
-use subspace_runtime_primitives::Moment;
+use subspace_runtime_primitives::{Moment, SHANNON};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -55,6 +58,52 @@ pub const SLOT_DURATION: u64 = 1000;
 
 /// The EVM chain Id type
 pub type EVMChainId = u64;
+
+/// Maximum block length for mandatory dispatch.
+pub const MAXIMUM_MANDATORY_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
+
+/// Maximum block length for operational and normal dispatches.
+pub const MAXIMUM_OPERATIONAL_AND_NORMAL_BLOCK_LENGTH: u32 = u32::MAX;
+
+/// Maximum block length for all dispatches.
+pub fn maximum_block_length() -> BlockLength {
+    BlockLength {
+        max: PerDispatchClass::new(|class| match class {
+            DispatchClass::Normal | DispatchClass::Operational => {
+                MAXIMUM_OPERATIONAL_AND_NORMAL_BLOCK_LENGTH
+            }
+            DispatchClass::Mandatory => MAXIMUM_MANDATORY_BLOCK_LENGTH,
+        }),
+    }
+}
+
+/// The existential deposit. Same with the one on primary chain.
+pub const EXISTENTIAL_DEPOSIT: Balance = 500 * SHANNON;
+
+/// We assume that ~5% of the block weight is consumed by `on_initialize` handlers. This is
+/// used to limit the maximal weight of a single extrinsic.
+const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
+
+/// Maximum total block weight.
+pub const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::from_parts(u64::MAX, u64::MAX);
+
+pub fn block_weights() -> BlockWeights {
+    BlockWeights::builder()
+        .base_block(BlockExecutionWeight::get())
+        .for_class(DispatchClass::all(), |weights| {
+            weights.base_extrinsic = ExtrinsicBaseWeight::get();
+        })
+        .for_class(DispatchClass::Normal, |weights| {
+            // explicitly set max_total weight for normal dispatches to maximum
+            weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
+        })
+        .for_class(DispatchClass::Operational, |weights| {
+            // explicitly set max_total weight for operational dispatches to maximum
+            weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
+        })
+        .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
+        .build_or_panic()
+}
 
 /// Extracts the signer from an unchecked extrinsic.
 ///
@@ -113,6 +162,18 @@ impl TryConvertBack<AccountId, MultiAccountId> for AccountIdConverter {
     }
 }
 
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct CheckExtrinsicsValidityError {
+    pub extrinsic_index: u32,
+    pub transaction_validity_error: TransactionValidityError,
+}
+
+/// fullu qualified method name of check_extrinsics_and_do_pre_dispatch runtime api.
+/// Used to call state machine.
+/// Change it when the runtime api's name is changed in the interface.
+pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
+    "DomainCoreApi_check_extrinsics_and_do_pre_dispatch";
+
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
@@ -166,12 +227,11 @@ sp_api::decl_runtime_apis! {
         /// Returns true if the extrinsic is an inherent extrinsic.
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
 
-        /// Checks the validity of extrinsic + do pre_dispatch as well.
-        fn check_transaction_and_do_pre_dispatch(
-            uxt: &<Block as BlockT>::Extrinsic,
-            block_number: NumberFor<Block>,
-            block_hash: <Block as BlockT>::Hash
-        ) -> Result<(), TransactionValidityError>;
+        /// Checks the validity of array of extrinsics + pre_dispatch
+        /// returning failure on first extrinsic that fails runtime call.
+        /// IMPORTANT: Change `CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME` constant when this method name is changed
+        fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<<Block as BlockT>::Extrinsic>, block_number: NumberFor<Block>,
+            block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError>;
 
         /// Returns extrinsic Era if present
         fn extrinsic_era(
@@ -190,5 +250,15 @@ sp_api::decl_runtime_apis! {
         /// Return the consumed weight of the block
         #[api_version(2)]
         fn block_weight() -> Weight;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::block_weights;
+    #[test]
+    fn test_block_weights() {
+        // validate and build block weights
+        let _block_weights = block_weights();
     }
 }

@@ -275,6 +275,10 @@ mod pallet {
         #[pallet::constant]
         type MinOperatorStake: Get<BalanceOf<Self>>;
 
+        /// Minimum nominator stake required to nominate and operator.
+        #[pallet::constant]
+        type MinNominatorStake: Get<BalanceOf<Self>>;
+
         /// Minimum number of blocks after which any finalized withdrawals are released to nominators.
         #[pallet::constant]
         type StakeWithdrawalLockingPeriod: Get<DomainBlockNumberFor<Self>>;
@@ -834,7 +838,7 @@ mod pallet {
         pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundleOf<T>,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing bundle: {opaque_bundle:?}");
@@ -845,6 +849,11 @@ mod pallet {
             let extrinsics_root = opaque_bundle.extrinsics_root();
             let operator_id = opaque_bundle.operator_id();
             let receipt = opaque_bundle.into_receipt();
+
+            #[cfg(not(feature = "runtime-benchmarks"))]
+            let mut epoch_transitted = false;
+            #[cfg(feature = "runtime-benchmarks")]
+            let epoch_transitted = false;
 
             match execution_receipt_type::<T>(domain_id, &receipt) {
                 ReceiptType::Rejected(rejected_receipt_type) => {
@@ -866,6 +875,9 @@ mod pallet {
                     //
                     // NOTE: Skip the following staking related operations when benchmarking the
                     // `submit_bundle` call, these operations will be benchmarked separately.
+                    // TODO: in order to get a more accurate actual weight, separately benchmark:
+                    // - `do_reward_operators`,`do_slash_operators`,`do_unlock_pending_withdrawals`
+                    // - `do_finalize_domain_current_epoch`
                     #[cfg(not(feature = "runtime-benchmarks"))]
                     if let Some(confirmed_block_info) = maybe_confirmed_domain_block_info {
                         do_reward_operators::<T>(
@@ -902,6 +914,7 @@ mod pallet {
                                 domain_id,
                                 completed_epoch_index,
                             });
+                            epoch_transitted = true;
                         }
 
                         do_unlock_pending_withdrawals::<T>(
@@ -944,7 +957,15 @@ mod pallet {
                 bundle_author: operator_id,
             });
 
-            Ok(())
+            let actual_weight = if !epoch_transitted {
+                Some(T::WeightInfo::submit_bundle())
+            } else {
+                Some(
+                    T::WeightInfo::submit_bundle()
+                        .saturating_add(T::WeightInfo::pending_staking_operation()),
+                )
+            };
+            Ok(actual_weight.into())
         }
 
         #[pallet::call_index(1)]
@@ -1695,8 +1716,14 @@ impl<T: Config> Pallet<T> {
                     })?;
                 }
                 FraudProof::InvalidBundles(invalid_bundles_fraud_proof) => {
+                    let bad_receipt_parent =
+                        BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                            .ok_or(FraudProofError::ParentReceiptNotFound)?
+                            .execution_receipt;
+
                     verify_invalid_bundles_fraud_proof::<T::Block, T::DomainHeader, BalanceOf<T>>(
                         bad_receipt,
+                        bad_receipt_parent,
                         invalid_bundles_fraud_proof,
                     )
                     .map_err(|err| {
@@ -1855,6 +1882,8 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Returns the block number of oldest execution receipt.
+    // FIXME: the `oldest_receipt_number` may not be correct if fraud proof is submitted
+    // and bad ER were pruned, see https://github.com/subspace/subspace/issues/2354
     pub fn oldest_receipt_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
         Self::head_receipt_number(domain_id).saturating_sub(Self::block_tree_pruning_depth())
     }
@@ -1907,6 +1936,13 @@ impl<T: Config> Pallet<T> {
 
     pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
         BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
+    }
+
+    pub fn receipt_hash(
+        domain_id: DomainId,
+        domain_number: DomainBlockNumberFor<T>,
+    ) -> Option<ReceiptHashFor<T>> {
+        BlockTree::<T>::get(domain_id, domain_number)
     }
 }
 

@@ -119,6 +119,35 @@ pub fn native_version() -> NativeVersion {
     }
 }
 
+/// Executor dispatch for subspace runtime
+#[cfg(feature = "std")]
+pub struct ExecutorDispatch;
+
+#[cfg(feature = "std")]
+impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
+    /// Only enable the benchmarking host functions when we actually want to benchmark.
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = (
+        frame_benchmarking::benchmarking::HostFunctions,
+        sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains_fraud_proof::HostFunctions,
+    );
+    /// Otherwise we only use the default Substrate host functions.
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = (
+        sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains_fraud_proof::HostFunctions,
+    );
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        native_version()
+    }
+}
+
 // TODO: Many of below constants should probably be updatable but currently they are not
 
 /// Since Subspace is probabilistic this is the average expected block time that
@@ -587,7 +616,12 @@ parameter_types! {
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
     /// Runtime upgrade is delayed for 1 day at 6 sec block time.
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
-    pub MinOperatorStake: Balance = 100 * SSC;
+    /// Minimum operator stake to become an operator.
+    // TODO: this value should be properly updated before mainnet
+    pub const MinOperatorStake: Balance = 100 * SSC;
+    /// Minimum nominator stake to nominate and operator.
+    // TODO: this value should be properly updated before mainnet
+    pub const MinNominatorStake: Balance = SSC;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
     /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
@@ -607,6 +641,9 @@ parameter_types! {
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
 
+// Minimum operator stake must be >= minimum nominator stake since operator is also a nominator.
+const_assert!(MinOperatorStake::get() >= MinNominatorStake::get());
+
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = DomainHash;
@@ -619,6 +656,7 @@ impl pallet_domains::Config for Runtime {
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type MinOperatorStake = MinOperatorStake;
+    type MinNominatorStake = MinNominatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
     type MaxBundlesPerBlock = MaxBundlesPerBlock;
@@ -1072,6 +1110,10 @@ impl_runtime_apis! {
 
         fn sudo_account_id() -> AccountId {
             SudoId::get()
+        }
+
+        fn receipt_hash(domain_id: DomainId, domain_number: DomainNumber) -> Option<DomainHash> {
+            Domains::receipt_hash(domain_id, domain_number)
         }
     }
 
