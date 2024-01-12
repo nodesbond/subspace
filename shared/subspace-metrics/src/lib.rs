@@ -6,18 +6,14 @@
 //! - Official Rust Prometheus client (registry aliased as Libp2pMetricsRegistry)
 //! - TiKV's Prometheus client (registry aliased as SubstrateMetricsRegistry)
 
-use actix_web::http::StatusCode;
-use actix_web::web::Data;
-use actix_web::{get, App, HttpResponse, HttpServer};
+use actix_web::{get, web::Data, App, HttpResponse, HttpServer, http::StatusCode};
 use parking_lot::Mutex;
 use prometheus::{Encoder, Registry as SubstrateMetricsRegistry, TextEncoder};
 use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry as Libp2pMetricsRegistry;
 use std::error::Error;
 use std::future::Future;
-use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::ops::DerefMut;
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
@@ -35,49 +31,42 @@ pub enum RegistryAdapter {
 }
 
 #[get("/metrics")]
-async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, Box<dyn Error>> {
+async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, HttpResponse> {
     let encoded_metrics = match registry.lock().deref_mut() {
-        RegistryAdapter::Libp2p(libp2p_registry) => {
-            let mut encoded = String::new();
-            encode(&mut encoded, libp2p_registry)?;
-
-            encoded
-        }
-        RegistryAdapter::Substrate(substrate_registry) => {
-            let encoder = TextEncoder::new();
-            let mut encoded = String::new();
-            unsafe {
-                encoder.encode(&substrate_registry.gather(), &mut encoded.as_mut_vec())?;
-            }
-            encoded
-        }
+        RegistryAdapter::Libp2p(libp2p_registry) => encode_metrics_libp2p(libp2p_registry),
+        RegistryAdapter::Substrate(substrate_registry) => encode_metrics_substrate(substrate_registry),
         RegistryAdapter::Both(libp2p_registry, substrate_registry) => {
-            // We combine outputs of both metrics registries in one string.
-            let mut libp2p_encoded = String::new();
-            encode(&mut libp2p_encoded, libp2p_registry)?;
-
-            let encoder = TextEncoder::new();
-            let mut substrate_encoded = String::new();
-            unsafe {
-                encoder.encode(
-                    &substrate_registry.gather(),
-                    &mut substrate_encoded.as_mut_vec(),
-                )?;
+            match (encode_metrics_libp2p(libp2p_registry), encode_metrics_substrate(substrate_registry)) {
+                (Ok(libp2p_encoded), Ok(substrate_encoded)) => Ok(substrate_encoded + &libp2p_encoded),
+                (Err(e), _) | (_, Err(e)) => Err(e),
             }
-
-            // libp2p string contains #EOF, order is important here.
-            substrate_encoded + &libp2p_encoded
         }
     };
 
-    let resp = HttpResponse::build(StatusCode::OK).body(encoded_metrics);
+    encoded_metrics
+        .map(|encoded| HttpResponse::build(StatusCode::OK).body(encoded))
+        .map_err(|e| {
+            error!("Failed to encode metrics: {}", e);
+            HttpResponse::InternalServerError().finish()
+        })
+}
 
-    Ok(resp)
+fn encode_metrics_libp2p(libp2p_registry: &Libp2pMetricsRegistry) -> Result<String, Box<dyn Error>> {
+    let mut encoded = String::new();
+    encode(&mut encoded, libp2p_registry)?;
+    Ok(encoded)
+}
+
+fn encode_metrics_substrate(substrate_registry: &SubstrateMetricsRegistry) -> Result<String, Box<dyn Error>> {
+    let encoder = TextEncoder::new();
+    let mut buffer = Vec::new();
+    encoder.encode(&substrate_registry.gather(), &mut buffer)?;
+    Ok(String::from_utf8(buffer)?)
 }
 
 /// Start prometheus metrics server on the provided address.
 pub fn start_prometheus_metrics_server(
-    mut endpoints: Vec<SocketAddr>,
+    endpoints: Vec<SocketAddr>,
     registry: RegistryAdapter,
 ) -> std::io::Result<impl Future<Output = std::io::Result<()>>> {
     let shared_registry = Arc::new(Mutex::new(registry));
@@ -93,36 +82,24 @@ pub fn start_prometheus_metrics_server(
         Err(error) => {
             if error.kind() != ErrorKind::AddrInUse {
                 error!(?error, "Failed to start metrics server.");
-
                 return Err(error);
             }
-
-            // Trying to recover from "address in use" error.
-            warn!(
-                ?error,
-                "Failed to start metrics server. Falling back to the random port...",
-            );
-
-            endpoints.iter_mut().for_each(|endpoint| {
-                endpoint.set_port(0);
-            });
-
-            let result = HttpServer::new(app_factory)
-                .workers(2)
-                .bind(endpoints.as_slice());
-
-            match result {
-                Ok(server) => server,
-                Err(error) => {
-                    error!(?error, "Failed to start metrics server on the random port.");
-
-                    return Err(error);
-                }
-            }
+            recover_from_addr_in_use_error(endpoints, app_factory)
         }
     };
 
-    info!(endpoints = ?server.addrs(), "Metrics server started.",);
+    info!(endpoints = ?server.addrs(), "Metrics server started.");
 
     Ok(server.run())
 }
+
+fn recover_from_addr_in_use_error(mut endpoints: Vec<SocketAddr>, app_factory: impl Fn() -> App + Clone) -> std::io::Result<HttpServer> {
+    warn!("Address in use, attempting to start server with random port...");
+    // Logic to recover from "address in use" error by setting port to 0
+    endpoints.iter_mut().for_each(|endpoint| {
+        endpoint.set_port(0);
+    });
+
+    HttpServer::new(app_factory)
+        .workers(2)
+        .bind
